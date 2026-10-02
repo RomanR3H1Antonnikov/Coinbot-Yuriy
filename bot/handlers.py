@@ -34,7 +34,7 @@ async def cmd_logs(message: Message):
         await message.answer("Находок пока нет.")
         return
 
-    lines = [f"📋 *Последние находки ({len(lots)}):*\n"]
+    lines = [f"📋 <b>Последние находки ({len(lots)}):</b>\n"]
     for i, lot in enumerate(lots, 1):
         found_at = lot.get("found_at", "")
         if found_at:
@@ -46,8 +46,8 @@ async def cmd_logs(message: Message):
                 pass
 
         source = lot.get("source", "")
-        title = lot.get("title", "—")[:60]
-        price = lot.get("price", "—")
+        title = (lot.get("title") or "—")[:60]
+        price = lot.get("price") or "—"
         url = lot.get("url", "")
 
         lines.append(
@@ -60,8 +60,8 @@ async def cmd_logs(message: Message):
     chunk = ""
     for line in lines:
         if len(chunk) + len(line) > 3800:
-            await message.answer(chunk, disable_web_page_preview=True)
+            await message.answer(chunk, parse_mode="HTML", disable_web_page_preview=True)
             chunk = ""
         chunk += line + "\n"
     if chunk:
-        await message.answer(chunk, disable_web_page_preview=True)
+        await message.answer(chunk, parse_mode="HTML", disable_web_page_preview=True)

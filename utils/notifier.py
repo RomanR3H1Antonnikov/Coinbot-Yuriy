@@ -26,7 +26,12 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
     source_label = lot.get("source_label", lot.get("source", ""))
     photo_url = lot.get("photo_url")
 
-    text = f"🔍 *{_escape(source_label)}*\n\n{_escape(title)}\n💰 {_escape(price)}\n\n{url}"
+    text = (
+        f"🔍 <b>{_h(source_label)}</b>\n\n"
+        f"{_h(title)}\n"
+        f"💰 {_h(price)}\n\n"
+        f"{url}"
+    )
 
     base_url = f"https://api.telegram.org/bot{token}"
 
@@ -38,17 +43,24 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
                     "chat_id": cid,
                     "photo": photo_url,
                     "caption": text,
-                    "parse_mode": "Markdown",
+                    "parse_mode": "HTML",
                 },
                 timeout=10,
             )
+            if not resp.ok:
+                # fallback: send text only
+                resp = requests.post(
+                    f"{base_url}/sendMessage",
+                    json={"chat_id": cid, "text": text, "parse_mode": "HTML"},
+                    timeout=10,
+                )
         else:
             resp = requests.post(
                 f"{base_url}/sendMessage",
                 json={
                     "chat_id": cid,
                     "text": text,
-                    "parse_mode": "Markdown",
+                    "parse_mode": "HTML",
                     "disable_web_page_preview": False,
                 },
                 timeout=10,
@@ -63,8 +75,6 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
         logger.error("send_alert network error: %s", e)
 
 
-def _escape(text: str) -> str:
-    # Escape Markdown special chars that can break formatting
-    for ch in ("*", "_", "`", "["):
-        text = text.replace(ch, f"\\{ch}")
-    return text
+def _h(text: str) -> str:
+    """Escape HTML special chars for Telegram HTML parse mode."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
