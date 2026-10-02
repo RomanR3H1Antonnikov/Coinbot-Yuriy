@@ -1,26 +1,21 @@
 import time
 import re
 import logging
-from datetime import datetime, timezone
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests as cf_requests
 
 from scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ru-RU,ru;q=0.9",
-}
+BASE_URL = "https://auction.ru"
 
-SESSION = requests.Session()
-SESSION.headers.update(HEADERS)
+
+def _make_session() -> cf_requests.Session:
+    s = cf_requests.Session(impersonate="chrome124")
+    s.headers.update({"Accept-Language": "ru-RU,ru;q=0.9"})
+    return s
 
 
 def _extract_lot_id(href: str) -> str | None:
@@ -32,117 +27,108 @@ def _extract_lot_id(href: str) -> str | None:
 
 
 class AuctionScraper(BaseScraper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session: cf_requests.Session | None = None
+
+    def _get_session(self) -> cf_requests.Session:
+        if self._session is None:
+            self._session = _make_session()
+        return self._session
+
     def fetch_new_lots(self, since: str | None = None) -> list[dict]:
         lots = []
-        page = 1
+        s = self._get_session()
 
-        while True:
+        for page in range(1, 6):
             page_url = f"{self.url}?page={page}&sort=date"
 
             try:
-                resp = SESSION.get(page_url, timeout=15)
+                resp = s.get(page_url, timeout=20)
                 resp.raise_for_status()
-            except requests.RequestException as e:
+            except Exception as e:
                 logger.error("Auction fetch error (%s): %s", page_url, e)
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
+            page_lots = self._parse_page(soup)
 
-            cards = soup.select("div.offer-card, div.lot, article.offer, li.offer")
-            if not cards:
-                cards = soup.select("a[href*='/offer/']")
-                lots_on_page = self._parse_links(cards, since)
-            else:
-                lots_on_page = self._parse_cards(cards, since)
-
-            if not lots_on_page:
+            if not page_lots:
+                logger.debug("Auction: no lots on page %d, stopping", page)
                 break
 
-            lots.extend(lots_on_page)
+            lots.extend(page_lots)
+            logger.debug("Auction page %d: %d lots", page, len(page_lots))
 
-            if since and lots_on_page:
-                last = lots_on_page[-1].get("published_at")
-                if last and last < since:
-                    break
-
-            page += 1
-            if page > 5:
-                break
-
-            time.sleep(1.5)
+            time.sleep(2)
 
         return lots
 
-    def _parse_cards(self, cards, since: str | None) -> list[dict]:
+    def _parse_page(self, soup: BeautifulSoup) -> list[dict]:
         lots = []
-        for card in cards:
-            a = card.select_one("a[href*='/offer/']")
-            if not a:
-                continue
-            href = a.get("href", "")
-            lot_id = _extract_lot_id(href)
-            if not lot_id:
-                continue
+        seen = set()
 
-            full_url = f"https://auction.ru{href}" if href.startswith("/") else href
+        # Try card-based selectors first
+        cards = soup.select(
+            "div.offer-card, div.lot-item, article.offer, "
+            "div[class*='offer'], li[class*='offer']"
+        )
 
-            title_el = card.select_one(".offer-title, .title, h3, h2")
-            title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
+        if cards:
+            for card in cards:
+                a = card.find("a", href=lambda h: h and "/offer/" in h)
+                if not a:
+                    continue
+                href = a.get("href", "")
+                lot_id = _extract_lot_id(href)
+                if not lot_id or lot_id in seen:
+                    continue
+                seen.add(lot_id)
 
-            price_el = card.select_one(".price, .offer-price, [class*='price']")
-            price = price_el.get_text(strip=True) if price_el else ""
+                full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
 
-            img_el = card.select_one("img")
-            photo_url = img_el.get("src") or img_el.get("data-src") if img_el else None
+                title_el = card.select_one(".offer-title, .title, h3, h2")
+                title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
 
-            date_el = card.select_one(".date, .time, [class*='date']")
-            published_at = None
-            if date_el:
-                txt = date_el.get_text(strip=True)
-                try:
-                    dt = datetime.strptime(txt, "%d.%m.%Y")
-                    published_at = dt.isoformat()
-                except ValueError:
-                    pass
+                price_el = card.select_one("[class*='price']")
+                price = price_el.get_text(strip=True) if price_el else ""
 
-            if since and published_at and published_at < since:
-                continue
+                img = card.find("img")
+                photo_url = None
+                if img:
+                    src = img.get("src") or img.get("data-src", "")
+                    photo_url = f"{BASE_URL}{src}" if src.startswith("/") else src or None
 
-            lots.append({
-                "lot_id": lot_id,
-                "source": self.source_id,
-                "source_label": self.label,
-                "url": full_url,
-                "title": title,
-                "price": price,
-                "photo_url": photo_url,
-                "description": title,
-                "published_at": published_at,
-            })
-        return lots
+                lots.append({
+                    "lot_id": lot_id,
+                    "source": self.source_id,
+                    "source_label": self.label,
+                    "url": full_url,
+                    "title": title,
+                    "price": price,
+                    "photo_url": photo_url,
+                    "description": title,
+                    "published_at": None,
+                })
+        else:
+            # Fallback: all offer links
+            for a in soup.find_all("a", href=lambda h: h and "/offer/" in h):
+                href = a.get("href", "")
+                lot_id = _extract_lot_id(href)
+                if not lot_id or lot_id in seen:
+                    continue
+                seen.add(lot_id)
+                full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
+                lots.append({
+                    "lot_id": lot_id,
+                    "source": self.source_id,
+                    "source_label": self.label,
+                    "url": full_url,
+                    "title": a.get_text(strip=True),
+                    "price": "",
+                    "photo_url": None,
+                    "description": a.get_text(strip=True),
+                    "published_at": None,
+                })
 
-    def _parse_links(self, links, since: str | None) -> list[dict]:
-        lots = []
-        seen_ids = set()
-        for a in links:
-            href = a.get("href", "")
-            lot_id = _extract_lot_id(href)
-            if not lot_id or lot_id in seen_ids:
-                continue
-            seen_ids.add(lot_id)
-
-            full_url = f"https://auction.ru{href}" if href.startswith("/") else href
-            title = a.get_text(strip=True)
-
-            lots.append({
-                "lot_id": lot_id,
-                "source": self.source_id,
-                "source_label": self.label,
-                "url": full_url,
-                "title": title,
-                "price": "",
-                "photo_url": None,
-                "description": title,
-                "published_at": None,
-            })
         return lots
