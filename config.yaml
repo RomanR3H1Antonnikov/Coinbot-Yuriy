@@ -1,0 +1,62 @@
+intervals:
+  meshok: 30
+  auction: 60
+  avito: 60
+
+keywords:
+  - заготовка
+  - гашеная
+  - муляж
+  - мул
+  - ошибка
+  - брак
+  - проба
+  - оттиск
+  - выкус
+  - двойной выкус
+  - тройной выкус
+  - разновидность
+  - перепутка
+  - без гуртовой надписи
+  - двойная накатка гуртовой надписи
+  - смещение
+  - щель
+  - без краски
+  - поворот
+  - несоостность
+  - полный раскол
+  - чечевица
+  - непрочекан
+  - соударение
+  - фальшивка
+  - образец
+  - легкая
+  - тяжелая
+  - инкуз
+  - перечекан
+  - лунка
+  - вне кольца
+
+meshok_sources:
+  - id: meshok_braki
+    label: "Мешок — Браки"
+    url: "https://meshok.net/listing?good=15190"
+  - id: meshok_yub_main
+    label: "Мешок — Юбилейка"
+    url: "https://meshok.net/good/15401"
+  - id: meshok_yub_tir
+    label: "Мешок — Юбилейка+Тиражные"
+    url: "https://meshok.net/listing?good=14723"
+
+auction_sources:
+  - id: auction_post1991
+    label: "Аукцион — Россия после 1991"
+    url: "https://auction.ru/listing/offer/rossija_posle_1991_goda-78259"
+  - id: auction_yub
+    label: "Аукцион — Юбилейные"
+    url: "https://auction.ru/listing/offer/pamjatnye_i_jubilejnye_monety-75693"
+  - id: auction_1rub
+    label: "Аукцион — 1 рубль"
+    url: "https://auction.ru/listing/offer/1_rubl-74407"
+
+avito_sources: []

@@ -1,0 +1,15 @@
+[Unit]
+Description=Coinbot Yuriy Telegram Bot
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/Coinbot-Yuriy
+ExecStart=/root/Coinbot-Yuriy/.venv/bin/python bot_service.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/Coinbot-Yuriy/logs/bot.log
+StandardError=append:/root/Coinbot-Yuriy/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target
