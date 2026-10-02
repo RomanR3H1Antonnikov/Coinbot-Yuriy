@@ -47,6 +47,12 @@ meshok_sources:
   - id: meshok_yub_tir
     label: "Мешок — Юбилейка+Тиражные"
     url: "https://meshok.net/listing?good=14723"
+  - id: meshok_russia_9196
+    label: "Мешок — Россия 1991–1996"
+    url: "https://meshok.net/listing?good=14702"
+  - id: meshok_ussr_1rub
+    label: "Мешок — СССР 1 рубль"
+    url: "https://meshok.net/listing?good=14699"
 
 auction_sources:
   - id: auction_post1991
