@@ -44,8 +44,12 @@ def run_meshok(cfg: dict):
         candidates = keyword_filter(lots, keywords)
         logger.info("After keyword_filter: %d candidates", len(candidates))
 
-        confirmed = [lot for lot in candidates if llm_check(lot)]
-        logger.info("After LLM: %d confirmed", len(confirmed))
+        if src.get("skip_llm"):
+            confirmed = candidates
+            logger.info("LLM skipped for %s (skip_llm=true)", src["id"])
+        else:
+            confirmed = [lot for lot in candidates if llm_check(lot)]
+            logger.info("After LLM: %d confirmed", len(confirmed))
 
         new_finds = dedup(confirmed)
         logger.info("After dedup: %d new finds", len(new_finds))
@@ -81,8 +85,12 @@ def run_auction(cfg: dict):
         candidates = keyword_filter(lots, keywords)
         logger.info("After keyword_filter: %d candidates", len(candidates))
 
-        confirmed = [lot for lot in candidates if llm_check(lot)]
-        logger.info("After LLM: %d confirmed", len(confirmed))
+        if src.get("skip_llm"):
+            confirmed = candidates
+            logger.info("LLM skipped for %s (skip_llm=true)", src["id"])
+        else:
+            confirmed = [lot for lot in candidates if llm_check(lot)]
+            logger.info("After LLM: %d confirmed", len(confirmed))
 
         new_finds = dedup(confirmed)
         logger.info("After dedup: %d new finds", len(new_finds))

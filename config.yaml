@@ -41,6 +41,7 @@ meshok_sources:
   - id: meshok_braki
     label: "Мешок — Браки"
     url: "https://meshok.net/listing?good=15190"
+    skip_llm: true
   - id: meshok_yub_main
     label: "Мешок — Юбилейка"
     url: "https://meshok.net/good/15401"
