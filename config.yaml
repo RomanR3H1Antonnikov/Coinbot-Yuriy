@@ -56,14 +56,39 @@ meshok_sources:
     url: "https://meshok.net/listing?good=14699"
 
 auction_sources:
+  # Россия после 1991
   - id: auction_post1991
     label: "Аукцион — Россия после 1991"
     url: "https://auction.ru/listing/offer/rossija_posle_1991_goda-78259"
-  - id: auction_yub
-    label: "Аукцион — Юбилейные"
+  - id: auction_yub_new
+    label: "Аукцион — Юбилейные (после 1991)"
+    url: "https://auction.ru/listing/offer/pamjatnye_i_jubilejnye_monety-78271"
+  - id: auction_5rub
+    label: "Аукцион — 5 рублей"
+    url: "https://auction.ru/listing/offer/5_rublej-78266"
+  - id: auction_10rub
+    label: "Аукцион — 10 рублей"
+    url: "https://auction.ru/listing/offer/10_rublej-78267"
+  - id: auction_50rub
+    label: "Аукцион — 50 рублей"
+    url: "https://auction.ru/listing/offer/50_rublej-78269"
+  # СССР 1917-1991
+  - id: auction_yub_ussr
+    label: "Аукцион — Юбилейные СССР"
     url: "https://auction.ru/listing/offer/pamjatnye_i_jubilejnye_monety-75693"
   - id: auction_1rub
-    label: "Аукцион — 1 рубль"
+    label: "Аукцион — 1 рубль СССР"
     url: "https://auction.ru/listing/offer/1_rubl-74407"
 
-avito_sources: []
+# Авито: поддерживает AVITO_PROXY в .env (http://user:pass@host:port)
+# Без прокси — 429 с datacenter IP, скрапер пропускает источник
+avito_sources:
+  - id: avito_brak
+    label: "Авито — Браки"
+    url: "https://www.avito.ru/rossiya/kollektsionirovanie/monety-ASgBAgICAkSSA8YQ?q=%D0%B1%D1%80%D0%B0%D0%BA&s=104"
+  - id: avito_mul
+    label: "Авито — Мул/Перепутка"
+    url: "https://www.avito.ru/rossiya/kollektsionirovanie/monety-ASgBAgICAkSSA8YQ?q=%D0%BC%D1%83%D0%BB+%D0%BF%D0%B5%D1%80%D0%B5%D0%BF%D1%83%D1%82%D0%BA%D0%B0&s=104"
+  - id: avito_smeshenie
+    label: "Авито — Смещение/Раскол"
+    url: "https://www.avito.ru/rossiya/kollektsionirovanie/monety-ASgBAgICAkSSA8YQ?q=%D1%81%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D0%B5+%D1%80%D0%B0%D1%81%D0%BA%D0%BE%D0%BB&s=104"

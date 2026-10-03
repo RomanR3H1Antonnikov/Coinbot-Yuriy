@@ -18,6 +18,7 @@ from pipeline.llm_checker import llm_check, get_llm_stats
 from pipeline.dedup import dedup
 from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
+from scrapers.avito import AvitoScraper
 from utils.notifier import send_alert
 from utils.logger import setup_logger
 
@@ -113,9 +114,53 @@ def run_auction(cfg: dict):
     logger.info("LLM stats: calls=%d tokens=%d", stats["calls"], stats["tokens"])
 
 
+def run_avito(cfg: dict):
+    keywords = cfg["keywords"]
+    for src in cfg.get("avito_sources", []):
+        scraper = AvitoScraper(src["id"], src["label"], src["url"])
+        since = get_last_run_at(src["id"])
+        logger.info("Avito [%s] since=%s", src["id"], since)
+
+        lots = scraper.fetch_new_lots(since=since)
+        logger.info("Fetched %d lots from %s", len(lots), src["id"])
+
+        if not lots:
+            set_last_run_at(src["id"], datetime.now(timezone.utc).isoformat())
+            continue
+
+        candidates = keyword_filter(lots, keywords)
+        logger.info("After keyword_filter: %d candidates", len(candidates))
+
+        if src.get("skip_llm"):
+            confirmed = candidates
+        else:
+            confirmed = [lot for lot in candidates if llm_check(lot)]
+            logger.info("After LLM: %d confirmed", len(confirmed))
+
+        new_finds = dedup(confirmed)
+        logger.info("After dedup: %d new finds", len(new_finds))
+
+        for lot in new_finds:
+            send_alert(lot)
+            save_found_lot({
+                "lot_id": lot["lot_id"],
+                "source": lot["source"],
+                "url": lot["url"],
+                "title": lot.get("title"),
+                "price": lot.get("price"),
+                "photo_url": lot.get("photo_url"),
+                "summary": None,
+            })
+
+        set_last_run_at(src["id"], datetime.now(timezone.utc).isoformat())
+
+    stats = get_llm_stats()
+    logger.info("LLM stats: calls=%d tokens=%d", stats["calls"], stats["tokens"])
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=["meshok", "auction", "all"], default="all")
+    parser.add_argument("--source", choices=["meshok", "auction", "avito", "all"], default="all")
     args = parser.parse_args()
 
     init_db()
@@ -126,6 +171,9 @@ def main():
 
     if args.source in ("auction", "all"):
         run_auction(cfg)
+
+    if args.source in ("avito", "all"):
+        run_avito(cfg)
 
 
 if __name__ == "__main__":
