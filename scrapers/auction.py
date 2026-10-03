@@ -18,8 +18,11 @@ def _make_session() -> cf_requests.Session:
     return s
 
 
-def _extract_lot_id(href: str) -> str | None:
-    m = re.search(r"/offer/(\d+)", href)
+def _extract_lot_id(href: str, data_id: str = "") -> str | None:
+    if data_id and re.match(r"^\d+$", data_id):
+        return data_id
+    # href: /offer/slug-iNNNNNNN.html
+    m = re.search(r"-i(\d{8,})\.html", href)
     if m:
         return m.group(1)
     m = re.search(r"[?&]id=(\d+)", href)
@@ -67,68 +70,64 @@ class AuctionScraper(BaseScraper):
     def _parse_page(self, soup: BeautifulSoup) -> list[dict]:
         lots = []
         seen = set()
+        import json as _json
 
-        # Try card-based selectors first
-        cards = soup.select(
-            "div.offer-card, div.lot-item, article.offer, "
-            "div[class*='offer'], li[class*='offer']"
-        )
+        # auction.ru card containers
+        cards = soup.find_all("div", class_="offers__item")
 
-        if cards:
-            for card in cards:
-                a = card.find("a", href=lambda h: h and "/offer/" in h)
-                if not a:
-                    continue
-                href = a.get("href", "")
-                lot_id = _extract_lot_id(href)
-                if not lot_id or lot_id in seen:
-                    continue
-                seen.add(lot_id)
+        for card in cards:
+            data_id = card.get("data-id", "")
+            link = card.find("a", class_="offer_snippet__link")
+            if not link:
+                continue
 
-                full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
+            href = link.get("href", "")
+            lot_id = _extract_lot_id(href, data_id)
+            if not lot_id or lot_id in seen:
+                continue
+            seen.add(lot_id)
 
-                title_el = card.select_one(".offer-title, .title, h3, h2")
-                title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
+            full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
 
-                price_el = card.select_one("[class*='price']")
-                price = price_el.get_text(strip=True) if price_el else ""
+            # Title from aria-label (most reliable)
+            title = link.get("aria-label", "").strip()
+            if not title:
+                title_el = card.find("a", class_="offer_snippet_body_top--title")
+                title = title_el.get_text(strip=True) if title_el else ""
 
-                img = card.find("img")
-                photo_url = None
-                if img:
-                    src = img.get("src") or img.get("data-src", "")
-                    photo_url = f"{BASE_URL}{src}" if src.startswith("/") else src or None
+            # Price: strip rouble symbol garbage
+            price = ""
+            price_el = card.find("div", class_="offer_snippet_body_price--value")
+            if price_el:
+                raw = price_el.get_text(separator=" ", strip=True)
+                price = re.sub(r"\s*a\s*$", " ₽", raw).strip()
 
-                lots.append({
-                    "lot_id": lot_id,
-                    "source": self.source_id,
-                    "source_label": self.label,
-                    "url": full_url,
-                    "title": title,
-                    "price": price,
-                    "photo_url": photo_url,
-                    "description": title,
-                    "published_at": None,
-                })
-        else:
-            # Fallback: all offer links
-            for a in soup.find_all("a", href=lambda h: h and "/offer/" in h):
-                href = a.get("href", "")
-                lot_id = _extract_lot_id(href)
-                if not lot_id or lot_id in seen:
-                    continue
-                seen.add(lot_id)
-                full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
-                lots.append({
-                    "lot_id": lot_id,
-                    "source": self.source_id,
-                    "source_label": self.label,
-                    "url": full_url,
-                    "title": a.get_text(strip=True),
-                    "price": "",
-                    "photo_url": None,
-                    "description": a.get_text(strip=True),
-                    "published_at": None,
-                })
+            # Photo: data-img JSON array on div.snippet_photo.lazy
+            photo_url = None
+            photo_div = card.find("div", class_="snippet_photo")
+            if photo_div:
+                data_img = photo_div.get("data-img", "")
+                if data_img:
+                    try:
+                        imgs = _json.loads(data_img)
+                        if imgs:
+                            photo_url = imgs[0]
+                    except Exception:
+                        pass
+
+            lots.append({
+                "lot_id": lot_id,
+                "source": self.source_id,
+                "source_label": self.label,
+                "url": full_url,
+                "title": title,
+                "price": price,
+                "photo_url": photo_url,
+                "description": title,
+                "published_at": None,
+            })
+
+        if not lots:
+            logger.warning("Auction [%s]: card parser found 0 lots — page structure may have changed", self.source_id)
 
         return lots
