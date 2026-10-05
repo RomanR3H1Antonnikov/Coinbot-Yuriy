@@ -11,16 +11,15 @@ def setup_logger(name: str, log_file: str, level: int = logging.INFO) -> logging
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    # 10 MB per file, 5 backups → ~50 MB max total per log
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
     file_handler.setFormatter(fmt)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(fmt)
 
     logger = logging.getLogger(name)
     logger.setLevel(level)
     if not logger.handlers:
         logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
 
     return logger
