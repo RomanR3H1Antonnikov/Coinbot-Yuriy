@@ -77,6 +77,8 @@ class AuctionScraper(BaseScraper):
 
         for card in cards:
             data_id = card.get("data-id", "")
+            sale_type_raw = card.get("data-saletype", "")
+            sale_type = "auction" if sale_type_raw == "auction" else ("buy_now" if sale_type_raw else None)
             link = card.find("a", class_="offer_snippet__link")
             if not link:
                 continue
@@ -125,6 +127,7 @@ class AuctionScraper(BaseScraper):
                 "photo_url": photo_url,
                 "description": title,
                 "published_at": None,
+                "sale_type": sale_type,
             })
 
         if not lots:
