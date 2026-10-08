@@ -16,6 +16,7 @@ from db.database import init_db, get_last_run_at, set_last_run_at, save_found_lo
 from pipeline.keyword_filter import keyword_filter
 from pipeline.pre_filter import pre_filter
 from pipeline.llm_checker import llm_check, get_llm_stats
+from pipeline.jubilee_check import is_jubilee, get_jubilee_stats
 from pipeline.dedup import dedup
 from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
@@ -78,6 +79,13 @@ def _run_source(src: dict, scraper, cfg: dict):
 
         confirmed = direct_hits + llm_confirmed
 
+    # Circulation (тиражные) coins are not wanted even with real defects.
+    # Sources that are already the jubilee category skip the check.
+    if confirmed and not src.get("jubilee_source"):
+        before = len(confirmed)
+        confirmed = [l for l in confirmed if is_jubilee(l)]
+        logger.info("[%s] After jubilee check: %d/%d", src["id"], len(confirmed), before)
+
     new_finds = dedup(confirmed)
     logger.info("[%s] After dedup: %d new finds", src["id"], len(new_finds))
 
@@ -120,6 +128,8 @@ def run_avito(cfg: dict):
 def _log_llm_stats():
     stats = get_llm_stats()
     logger.info("LLM stats: calls=%d tokens=%d", stats["calls"], stats["tokens"])
+    jstats = get_jubilee_stats()
+    logger.info("Jubilee stats: calls=%d tokens=%d", jstats["calls"], jstats["tokens"])
 
 
 def main():

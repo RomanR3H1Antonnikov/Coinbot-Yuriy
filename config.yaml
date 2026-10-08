@@ -102,6 +102,7 @@ auction_sources:
   - id: auction_yub_new
     label: "Аукцион — Юбилейные (после 1991)"
     url: "https://auction.ru/listing/offer/pamjatnye_i_jubilejnye_monety-78271"
+    jubilee_source: true
   - id: auction_5rub
     label: "Аукцион — 5 рублей"
     url: "https://auction.ru/listing/offer/5_rublej-78266"
@@ -115,6 +116,7 @@ auction_sources:
   - id: auction_yub_ussr
     label: "Аукцион — Юбилейные СССР"
     url: "https://auction.ru/listing/offer/pamjatnye_i_jubilejnye_monety-75693"
+    jubilee_source: true
   - id: auction_1rub
     label: "Аукцион — 1 рубль СССР"
     url: "https://auction.ru/listing/offer/1_rubl-74407"
