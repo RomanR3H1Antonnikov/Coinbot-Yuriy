@@ -59,7 +59,8 @@ async def cmd_start(message: Message):
         "/logs 10 — последние N находок с фото\n"
         "/list 20 — текстовый список последних N находок\n"
         "/rejected — что бот рассмотрел, но не прислал (за 24 ч, обиходные монеты)\n"
-        "/rejected 48 ии — за 48 ч, отклонённые ИИ (ещё: правила, все)",
+        "/rejected 48 ии — за 48 ч, отклонённые ИИ (ещё: правила, все)\n"
+        "/rejected 24 фото — то же, но по одному лоту с фото (до 30)",
         parse_mode="HTML",
     )
 
@@ -158,18 +159,21 @@ STAGE_TITLES = {
     "rules": "правила (годовик, копейки, до 1965, цена, россыпи)",
 }
 MAX_REJECTED_LINES = 100
+MAX_REJECTED_PHOTOS = 30
 
 
 @router.message(Command("rejected"))
 async def cmd_rejected(message: Message):
     """Lots that passed keyword filter but were not sent, with the reason."""
     args = (message.text or "").split()[1:]
-    hours, stage = 24, "jubilee"
+    hours, stage, with_photos = 24, "jubilee", False
     for a in args:
         if a.isdigit():
             hours = min(max(int(a), 1), 24 * 7)
         elif a.lower() in STAGE_ALIASES:
             stage = STAGE_ALIASES[a.lower()]
+        elif a.lower() in ("фото", "photo", "photos"):
+            with_photos = True
 
     counts = count_rejected_by_stage(hours)
     total = sum(counts.values())
@@ -183,7 +187,35 @@ async def cmd_rejected(message: Message):
     shown_title = "все причины" if stage == "all" else STAGE_TITLES[stage]
     header.append(f"\nПоказываю: <b>{shown_title}</b>\n")
 
-    rows = get_rejected(hours, None if stage == "all" else stage, MAX_REJECTED_LINES)
+    rows = get_rejected(
+        hours, None if stage == "all" else stage,
+        MAX_REJECTED_PHOTOS if with_photos else MAX_REJECTED_LINES,
+    )
+    shown_total = counts.get(stage, 0) if stage != "all" else total
+
+    if with_photos:
+        await message.answer("\n".join(header), parse_mode="HTML")
+        for r in rows:
+            caption = (
+                f"🗑 <b>{_h(SOURCE_LABELS.get(r['source'], r['source']))}</b>  "
+                f"<i>{_fmt_date(r['rejected_at'])}</i>\n\n"
+                f"{_h((r['title'] or '—')[:200])}\n"
+                f"💰 {_h(r['price'] or '—')}\n"
+                f"↳ {_h(r['reason'] or '')}\n\n"
+                f"{r['url'] or ''}"
+            )
+            try:
+                if r.get("photo_url"):
+                    await message.answer_photo(photo=r["photo_url"], caption=caption, parse_mode="HTML")
+                else:
+                    await message.answer(caption, parse_mode="HTML")
+            except Exception:
+                await message.answer(caption, parse_mode="HTML")
+            await asyncio.sleep(0.3)
+        if shown_total > len(rows):
+            await message.answer(f"…показаны {len(rows)} из {shown_total} (самые свежие). Остальные — текстом: /rejected {hours}")
+        return
+
     lines = ["\n".join(header)]
     if not rows:
         lines.append("— нет лотов с этой причиной за выбранный период —")
@@ -196,7 +228,6 @@ async def cmd_rejected(message: Message):
             f"{reason}\n"
             f"   {r['url'] or ''}\n"
         )
-    shown_total = counts.get(stage, 0) if stage != "all" else total
     if shown_total > len(rows):
         lines.append(f"…показаны {len(rows)} из {shown_total} (самые свежие)")
     await _send_chunks(message, lines)

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS rejected_lots (
     title       TEXT,
     price       TEXT,
     rejected_at TIMESTAMP DEFAULT (datetime('now')),
+    photo_url   TEXT,
     PRIMARY KEY (lot_id, source)
 )
 """
@@ -80,6 +81,12 @@ def init_db():
         conn.execute(CREATE_FOUND_LOTS)
         conn.execute(CREATE_RUN_STATE)
         conn.execute(CREATE_REJECTED_LOTS)
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(rejected_lots)")}
+        if "photo_url" not in cols:
+            try:
+                conn.execute("ALTER TABLE rejected_lots ADD COLUMN photo_url TEXT")
+            except sqlite3.OperationalError:
+                pass  # the scraper and the bot may migrate at the same moment
 
 
 def save_rejected(rows: list[tuple[dict, str, str]]):
@@ -90,11 +97,11 @@ def save_rejected(rows: list[tuple[dict, str, str]]):
     with db_conn() as conn:
         conn.executemany(
             """INSERT OR IGNORE INTO rejected_lots
-               (lot_id, source, stage, reason, url, title, price)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (lot_id, source, stage, reason, url, title, price, photo_url)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (lot["lot_id"], lot["source"], stage, reason,
-                 lot.get("url"), lot.get("title"), lot.get("price"))
+                 lot.get("url"), lot.get("title"), lot.get("price"), lot.get("photo_url"))
                 for lot, stage, reason in rows
             ],
         )
