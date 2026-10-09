@@ -38,6 +38,21 @@ CREATE TABLE IF NOT EXISTS run_state (
 """
 
 
+CREATE_REJECTED_LOTS = """
+CREATE TABLE IF NOT EXISTS rejected_lots (
+    lot_id      TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    stage       TEXT NOT NULL,
+    reason      TEXT,
+    url         TEXT,
+    title       TEXT,
+    price       TEXT,
+    rejected_at TIMESTAMP DEFAULT (datetime('now')),
+    PRIMARY KEY (lot_id, source)
+)
+"""
+
+
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -64,6 +79,65 @@ def init_db():
         conn.execute(CREATE_SEEN_LOTS)
         conn.execute(CREATE_FOUND_LOTS)
         conn.execute(CREATE_RUN_STATE)
+        conn.execute(CREATE_REJECTED_LOTS)
+
+
+def save_rejected(rows: list[tuple[dict, str, str]]):
+    """rows: (lot, stage, reason). First rejection wins, so a lot stays in the
+    report for the day it was first rejected."""
+    if not rows:
+        return
+    with db_conn() as conn:
+        conn.executemany(
+            """INSERT OR IGNORE INTO rejected_lots
+               (lot_id, source, stage, reason, url, title, price)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (lot["lot_id"], lot["source"], stage, reason,
+                 lot.get("url"), lot.get("title"), lot.get("price"))
+                for lot, stage, reason in rows
+            ],
+        )
+
+
+def get_decided_ids(source: str) -> set[str]:
+    """Lots already rejected by the LLM or jubilee check: not worth paying to re-check."""
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT lot_id FROM rejected_lots WHERE source=? AND stage IN ('llm', 'jubilee')",
+            (source,),
+        ).fetchall()
+        return {r["lot_id"] for r in rows}
+
+
+def get_rejected(hours: int, stage: str | None = None, limit: int = 150) -> list[dict]:
+    query = "SELECT * FROM rejected_lots WHERE rejected_at >= datetime('now', ?)"
+    params: list = [f"-{int(hours)} hours"]
+    if stage:
+        query += " AND stage=?"
+        params.append(stage)
+    query += " ORDER BY rejected_at DESC LIMIT ?"
+    params.append(limit)
+    with db_conn() as conn:
+        return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def count_rejected_by_stage(hours: int) -> dict[str, int]:
+    with db_conn() as conn:
+        rows = conn.execute(
+            """SELECT stage, COUNT(*) AS n FROM rejected_lots
+               WHERE rejected_at >= datetime('now', ?) GROUP BY stage""",
+            (f"-{int(hours)} hours",),
+        ).fetchall()
+        return {r["stage"]: r["n"] for r in rows}
+
+
+def purge_rejected(days: int = 30):
+    with db_conn() as conn:
+        conn.execute(
+            "DELETE FROM rejected_lots WHERE rejected_at < datetime('now', ?)",
+            (f"-{int(days)} days",),
+        )
 
 
 def is_seen(lot_id: str, source: str) -> bool:

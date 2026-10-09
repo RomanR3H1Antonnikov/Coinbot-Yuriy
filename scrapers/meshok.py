@@ -58,11 +58,18 @@ class MeshokScraper(BaseScraper):
             else:
                 page_url = f"{self.url}?page={page}&sort=endDate"
 
-            try:
-                resp = s.get(page_url, timeout=20)
-                resp.raise_for_status()
-            except Exception as e:
-                logger.error("Meshok fetch error (%s): %s", page_url, e)
+            resp = None
+            for attempt in range(3):
+                try:
+                    resp = s.get(page_url, timeout=20)
+                    resp.raise_for_status()
+                    break
+                except Exception as e:
+                    resp = None
+                    logger.warning("Meshok fetch attempt %d/3 failed (%s): %s", attempt + 1, page_url, e)
+                    time.sleep(3 * (attempt + 1))
+            if resp is None:
+                logger.error("Meshok fetch error (%s): giving up after 3 attempts", page_url)
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")

@@ -1,26 +1,39 @@
+import os
 import re
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+import yaml
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from db.database import get_last_found_lots
+from db.database import (
+    get_last_found_lots, get_rejected, count_rejected_by_stage,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-SOURCE_LABELS = {
-    "meshok_braki": "Мешок — Браки",
-    "meshok_yub_main": "Мешок — Юбилейка",
-    "meshok_yub_tir": "Мешок — Юбилейка+Тиражные",
-    "meshok_russia_9196": "Мешок — Россия 1991–1996",
-    "meshok_ussr_1rub": "Мешок — СССР 1 рубль",
-    "auction_post1991": "Аукцион — Россия после 1991",
-    "auction_yub": "Аукцион — Юбилейные",
-    "auction_1rub": "Аукцион — 1 рубль",
-}
+MSK = timezone(timedelta(hours=3))
+
+
+def _load_source_labels() -> dict[str, str]:
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml")
+    labels: dict[str, str] = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        for group in ("meshok_sources", "auction_sources", "avito_sources"):
+            for src in cfg.get(group) or []:
+                labels[src["id"]] = src.get("label", src["id"])
+    except Exception as e:
+        logger.warning("Could not load source labels from config.yaml: %s", e)
+    return labels
+
+
+SOURCE_LABELS = _load_source_labels()
 
 
 def _h(text: str) -> str:
@@ -28,8 +41,9 @@ def _h(text: str) -> str:
 
 
 def _fmt_date(found_at: str) -> str:
+    """DB timestamps are UTC; show Moscow time."""
     try:
-        dt = datetime.fromisoformat(found_at)
+        dt = datetime.fromisoformat(found_at).replace(tzinfo=timezone.utc).astimezone(MSK)
         return dt.strftime("%d.%m %H:%M")
     except Exception:
         return found_at
@@ -43,7 +57,9 @@ async def cmd_start(message: Message):
         "Команды:\n"
         "/logs — последние 5 находок с фото\n"
         "/logs 10 — последние N находок с фото\n"
-        "/list 20 — текстовый список последних N находок",
+        "/list 20 — текстовый список последних N находок\n"
+        "/rejected — что бот рассмотрел, но не прислал (за 24 ч, обиходные монеты)\n"
+        "/rejected 48 ии — за 48 ч, отклонённые ИИ (ещё: правила, все)",
         parse_mode="HTML",
     )
 
@@ -116,6 +132,10 @@ async def cmd_list(message: Message):
             f"   {url}\n"
         )
 
+    await _send_chunks(message, lines)
+
+
+async def _send_chunks(message: Message, lines: list[str]):
     chunk = ""
     for line in lines:
         if len(chunk) + len(line) > 3800:
@@ -124,3 +144,57 @@ async def cmd_list(message: Message):
         chunk += line + "\n"
     if chunk:
         await message.answer(chunk, parse_mode="HTML", disable_web_page_preview=True)
+
+
+STAGE_ALIASES = {
+    "тиражка": "jubilee", "обиходные": "jubilee", "jubilee": "jubilee",
+    "ии": "llm", "llm": "llm",
+    "правила": "rules", "rules": "rules",
+    "все": "all", "всё": "all", "all": "all",
+}
+STAGE_TITLES = {
+    "jubilee": "обиходные монеты (тиражка)",
+    "llm": "ИИ: нет брака или разновидности",
+    "rules": "правила (годовик, копейки, до 1965, цена, россыпи)",
+}
+MAX_REJECTED_LINES = 100
+
+
+@router.message(Command("rejected"))
+async def cmd_rejected(message: Message):
+    """Lots that passed keyword filter but were not sent, with the reason."""
+    args = (message.text or "").split()[1:]
+    hours, stage = 24, "jubilee"
+    for a in args:
+        if a.isdigit():
+            hours = min(max(int(a), 1), 24 * 7)
+        elif a.lower() in STAGE_ALIASES:
+            stage = STAGE_ALIASES[a.lower()]
+
+    counts = count_rejected_by_stage(hours)
+    total = sum(counts.values())
+    if not total:
+        await message.answer(f"За последние {hours} ч отклонённых лотов нет.")
+        return
+
+    header = [f"🗑 <b>Отклонено за {hours} ч: {total}</b>"]
+    for key, title in STAGE_TITLES.items():
+        header.append(f" • {title}: {counts.get(key, 0)}")
+    shown_title = "все причины" if stage == "all" else STAGE_TITLES[stage]
+    header.append(f"\nПоказываю: <b>{shown_title}</b>\n")
+
+    rows = get_rejected(hours, None if stage == "all" else stage, MAX_REJECTED_LINES)
+    lines = ["\n".join(header)]
+    for i, r in enumerate(rows, 1):
+        label = SOURCE_LABELS.get(r["source"], r["source"])
+        reason = f"\n   ↳ {_h(r['reason'] or '')}" if stage in ("all", "rules") else ""
+        lines.append(
+            f"{i}. <b>{_h(label)}</b> | {_fmt_date(r['rejected_at'])}\n"
+            f"   {_h((r['title'] or '—')[:100])} | {_h(r['price'] or '—')}"
+            f"{reason}\n"
+            f"   {r['url'] or ''}\n"
+        )
+    shown_total = counts.get(stage, 0) if stage != "all" else total
+    if shown_total > len(rows):
+        lines.append(f"…показаны {len(rows)} из {shown_total} (самые свежие)")
+    await _send_chunks(message, lines)

@@ -31,7 +31,7 @@ _llm_calls = 0
 _llm_tokens = 0
 
 
-def llm_check(lot: dict) -> bool:
+def llm_check(lot: dict) -> bool | None:
     global _llm_calls, _llm_tokens
 
     title = lot.get("title", "")
@@ -67,7 +67,7 @@ def llm_check(lot: dict) -> bool:
             time.sleep(2 ** attempt)
 
     logger.error("LLM failed after 3 attempts for lot %s", lot.get("lot_id"))
-    return False
+    return None  # unknown, not a "NO": the caller must not remember it as rejected
 
 
 def get_llm_stats() -> dict:

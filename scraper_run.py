@@ -12,8 +12,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from db.database import init_db, get_last_run_at, set_last_run_at, save_found_lot
-from pipeline.keyword_filter import keyword_filter
+from db.database import (
+    init_db, get_last_run_at, set_last_run_at, save_found_lot,
+    is_seen, save_rejected, get_decided_ids, purge_rejected,
+)
+from pipeline.keyword_filter import keyword_filter, build_matcher, lot_text
 from pipeline.pre_filter import pre_filter
 from pipeline.llm_checker import llm_check, get_llm_stats
 from pipeline.jubilee_check import is_jubilee, get_jubilee_stats
@@ -34,60 +37,90 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def _keyword_sets(cfg: dict) -> tuple[list[str], list[str], list[str]]:
+    """(all, direct, always). Direct also contains always; all contains every list."""
+    always = cfg.get("keywords_always", [])
+    direct = list(dict.fromkeys(cfg.get("keywords_direct", []) + always))
+    every = list(dict.fromkeys(cfg.get("keywords", []) + direct + cfg.get("keywords_llm", [])))
+    return every, direct, always
+
+
 def _run_source(src: dict, scraper, cfg: dict):
     """Common pipeline for any source."""
-    keywords_direct = cfg.get("keywords_direct", [])
-    keywords_all = cfg.get("keywords", [])
-    direct_set = {k.lower() for k in keywords_direct}
+    src_id = src["id"]
+    kw_all, kw_direct, kw_always = _keyword_sets(cfg)
+    is_direct = build_matcher(kw_direct)
+    is_always = build_matcher(kw_always)
 
-    since = get_last_run_at(src["id"])
-    logger.info("[%s] since=%s", src["id"], since)
+    since = get_last_run_at(src_id)
+    logger.info("[%s] since=%s", src_id, since)
 
     lots = scraper.fetch_new_lots(since=since)
-    logger.info("[%s] Fetched %d lots", src["id"], len(lots))
+    logger.info("[%s] Fetched %d lots", src_id, len(lots))
 
     if not lots:
-        set_last_run_at(src["id"], datetime.now(timezone.utc).isoformat())
+        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
         return
 
-    # Pre-filter: drop годовики, копейки, pre-1965, cheap buy-now
-    lots = pre_filter(lots, keywords_direct)
-    logger.info("[%s] After pre_filter: %d lots", src["id"], len(lots))
+    rejected: list[tuple[dict, str, str]] = []  # (lot, stage, reason) for the /rejected report
 
-    # Keyword filter (all keywords)
-    candidates = keyword_filter(lots, keywords_all)
-    logger.info("[%s] After keyword_filter: %d candidates", src["id"], len(candidates))
+    # Pre-filter: годовики, копейки, до 1965, дешёвый buy-now, россыпи
+    pre_rejected: list[tuple[dict, str]] = []
+    lots = pre_filter(lots, kw_direct, kw_always, rejected=pre_rejected)
+    # Only lots that carry a keyword count as "reviewed" in the report
+    reviewed = {id(l) for l in keyword_filter([l for l, _ in pre_rejected], kw_all)}
+    rejected += [(l, "rules", reason) for l, reason in pre_rejected if id(l) in reviewed]
+    logger.info("[%s] After pre_filter: %d lots (%d rejected by rules)", src_id, len(lots), len(pre_rejected))
+
+    candidates = keyword_filter(lots, kw_all)
+    logger.info("[%s] After keyword_filter: %d candidates", src_id, len(candidates))
+
+    # Do not pay again for lots we already alerted about or already rejected
+    decided = get_decided_ids(src_id)
+    fresh = [
+        l for l in candidates
+        if is_always(lot_text(l))
+        or (l["lot_id"] not in decided and not is_seen(l["lot_id"], src_id))
+    ]
+    logger.info("[%s] New to review: %d (skipped %d already seen/decided)",
+                src_id, len(fresh), len(candidates) - len(fresh))
 
     if src.get("skip_llm"):
-        confirmed = candidates
-        logger.info("[%s] LLM skipped (skip_llm=true)", src["id"])
+        confirmed = fresh
+        logger.info("[%s] LLM skipped (skip_llm=true)", src_id)
     else:
-        # Split: direct keywords → skip LLM; rest → LLM check
-        def _text(lot):
-            return (lot.get("title", "") + " " + (lot.get("description") or "")).lower()
+        direct_hits = [l for l in fresh if is_direct(lot_text(l))]
+        direct_ids = {id(l) for l in direct_hits}
+        llm_hits = [l for l in fresh if id(l) not in direct_ids]
 
-        direct_hits = [l for l in candidates if any(k in _text(l) for k in direct_set)]
-        llm_hits = [l for l in candidates if l not in direct_hits]
-
-        if direct_hits:
-            logger.info("[%s] Direct keywords: %d lots (no LLM)", src["id"], len(direct_hits))
-        if llm_hits:
-            llm_confirmed = [l for l in llm_hits if llm_check(l)]
-            logger.info("[%s] After LLM: %d/%d confirmed", src["id"], len(llm_confirmed), len(llm_hits))
-        else:
-            llm_confirmed = []
-
+        llm_confirmed = []
+        for lot in llm_hits:
+            verdict = llm_check(lot)
+            if verdict:
+                llm_confirmed.append(lot)
+            elif verdict is False:
+                rejected.append((lot, "llm", "ИИ: нет брака или разновидности"))
+            # None = API failure: keep it out of the table so the next run retries it
+        logger.info("[%s] Direct keywords: %d lots (no LLM); LLM confirmed %d/%d",
+                    src_id, len(direct_hits), len(llm_confirmed), len(llm_hits))
         confirmed = direct_hits + llm_confirmed
 
     # Circulation (тиражные) coins are not wanted even with real defects.
-    # Sources that are already the jubilee category skip the check.
+    # Jubilee-category sources and "always" keywords skip the check.
     if confirmed and not src.get("jubilee_source"):
-        before = len(confirmed)
-        confirmed = [l for l in confirmed if is_jubilee(l)]
-        logger.info("[%s] After jubilee check: %d/%d", src["id"], len(confirmed), before)
+        kept = []
+        for lot in confirmed:
+            if is_always(lot_text(lot)) or is_jubilee(lot):
+                kept.append(lot)
+            else:
+                rejected.append((lot, "jubilee", "обиходная монета (тиражка)"))
+        logger.info("[%s] After jubilee check: %d/%d", src_id, len(kept), len(confirmed))
+        confirmed = kept
+
+    save_rejected(rejected)
 
     new_finds = dedup(confirmed)
-    logger.info("[%s] After dedup: %d new finds", src["id"], len(new_finds))
+    logger.info("[%s] After dedup: %d new finds", src_id, len(new_finds))
 
     for lot in new_finds:
         send_alert(lot)
@@ -101,7 +134,7 @@ def _run_source(src: dict, scraper, cfg: dict):
             "summary": None,
         })
 
-    set_last_run_at(src["id"], datetime.now(timezone.utc).isoformat())
+    set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
 
 
 def run_meshok(cfg: dict):
@@ -138,6 +171,7 @@ def main():
     args = parser.parse_args()
 
     init_db()
+    purge_rejected(30)
     cfg = load_config()
 
     if args.source in ("meshok", "all"):
