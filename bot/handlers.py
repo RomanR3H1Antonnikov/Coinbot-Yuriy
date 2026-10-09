@@ -185,6 +185,8 @@ async def cmd_rejected(message: Message):
 
     rows = get_rejected(hours, None if stage == "all" else stage, MAX_REJECTED_LINES)
     lines = ["\n".join(header)]
+    if not rows:
+        lines.append("— нет лотов с этой причиной за выбранный период —")
     for i, r in enumerate(rows, 1):
         label = SOURCE_LABELS.get(r["source"], r["source"])
         reason = f"\n   ↳ {_h(r['reason'] or '')}" if stage in ("all", "rules") else ""
