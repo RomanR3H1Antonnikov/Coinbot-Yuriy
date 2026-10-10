@@ -14,12 +14,11 @@ load_dotenv()
 
 from db.database import (
     init_db, get_last_run_at, set_last_run_at, save_found_lot,
-    is_seen, save_rejected, get_decided_ids, purge_rejected,
+    is_seen, mark_seen, save_rejected, purge_rejected, title_already_found,
 )
-from pipeline.keyword_filter import keyword_filter, build_matcher, lot_text
+from pipeline.keyword_filter import keyword_filter
 from pipeline.pre_filter import pre_filter
-from pipeline.llm_checker import llm_check, get_llm_stats
-from pipeline.jubilee_check import is_jubilee, get_jubilee_stats
+from pipeline.enrich import enrich_with_description
 from pipeline.dedup import dedup
 from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
@@ -49,8 +48,6 @@ def _run_source(src: dict, scraper, cfg: dict):
     """Common pipeline for any source."""
     src_id = src["id"]
     kw_all, kw_direct, kw_always = _keyword_sets(cfg)
-    is_direct = build_matcher(kw_direct)
-    is_always = build_matcher(kw_always)
 
     since = get_last_run_at(src_id)
     logger.info("[%s] since=%s", src_id, since)
@@ -64,58 +61,40 @@ def _run_source(src: dict, scraper, cfg: dict):
 
     rejected: list[tuple[dict, str, str]] = []  # (lot, stage, reason) for the /rejected report
 
-    # Pre-filter: годовики, копейки, до 1965, дешёвый buy-now, россыпи
+    # Since 10.10 there is no AI and no year/jubilee rules: every keyword hit is sent,
+    # except cheap buy-now lots and repeats.
     pre_rejected: list[tuple[dict, str]] = []
     lots = pre_filter(lots, kw_direct, kw_always, rejected=pre_rejected)
     # Only lots that carry a keyword count as "reviewed" in the report
     reviewed = {id(l) for l in keyword_filter([l for l, _ in pre_rejected], kw_all)}
     rejected += [(l, "rules", reason) for l, reason in pre_rejected if id(l) in reviewed]
-    logger.info("[%s] After pre_filter: %d lots (%d rejected by rules)", src_id, len(lots), len(pre_rejected))
+    logger.info("[%s] After pre_filter: %d lots (%d rejected by price)", src_id, len(lots), len(pre_rejected))
 
-    candidates = keyword_filter(lots, kw_all)
-    logger.info("[%s] After keyword_filter: %d candidates", src_id, len(candidates))
+    unseen = [l for l in lots if not is_seen(l["lot_id"], src_id)]
+    confirmed = keyword_filter(unseen, kw_all)
 
-    # Do not pay again for lots we already alerted about or already rejected
-    decided = get_decided_ids(src_id)
-    fresh = [
-        l for l in candidates
-        if is_always(lot_text(l))
-        or (l["lot_id"] not in decided and not is_seen(l["lot_id"], src_id))
-    ]
-    logger.info("[%s] New to review: %d (skipped %d already seen/decided)",
-                src_id, len(fresh), len(candidates) - len(fresh))
-
-    if src.get("skip_llm"):
-        confirmed = fresh
-        logger.info("[%s] LLM skipped (skip_llm=true)", src_id)
-    else:
-        direct_hits = [l for l in fresh if is_direct(lot_text(l))]
-        direct_ids = {id(l) for l in direct_hits}
-        llm_hits = [l for l in fresh if id(l) not in direct_ids]
-
-        llm_confirmed = []
-        for lot in llm_hits:
-            verdict = llm_check(lot)
-            if verdict:
-                llm_confirmed.append(lot)
-            elif verdict is False:
-                rejected.append((lot, "llm", "ИИ: нет брака или разновидности"))
-            # None = API failure: keep it out of the table so the next run retries it
-        logger.info("[%s] Direct keywords: %d lots (no LLM); LLM confirmed %d/%d",
-                    src_id, len(direct_hits), len(llm_confirmed), len(llm_hits))
-        confirmed = direct_hits + llm_confirmed
-
-    # Circulation (тиражные) coins are not wanted even with real defects.
-    # Jubilee-category sources and "always" keywords skip the check.
-    if confirmed and not src.get("jubilee_source"):
-        kept = []
-        for lot in confirmed:
-            if is_always(lot_text(lot)) or is_jubilee(lot):
-                kept.append(lot)
+    # Title has no keyword: the defect may be named only in the lot description (auction.ru).
+    # Checked lots are remembered as seen so their pages are not fetched again every run.
+    matched_ids = {id(l) for l in confirmed}
+    rest = [l for l in unseen if id(l) not in matched_ids]
+    enrich_with_description(rest)
+    for lot in rest:
+        if lot.get("_enriched"):
+            if keyword_filter([lot], kw_all):
+                confirmed.append(lot)
             else:
-                rejected.append((lot, "jubilee", "обиходная монета (тиражка)"))
-        logger.info("[%s] After jubilee check: %d/%d", src_id, len(kept), len(confirmed))
-        confirmed = kept
+                mark_seen(lot["lot_id"], src_id)
+    logger.info("[%s] Keyword hits: %d (of %d unseen)", src_id, len(confirmed), len(unseen))
+
+    # Same title already sent = seller re-listed the lot
+    kept = []
+    for lot in confirmed:
+        if title_already_found(lot.get("title", "")):
+            rejected.append((lot, "rules", "повтор (уже присылали)"))
+            mark_seen(lot["lot_id"], src_id)
+        else:
+            kept.append(lot)
+    confirmed = kept
 
     save_rejected(rejected)
 
@@ -141,28 +120,18 @@ def run_meshok(cfg: dict):
     for src in cfg.get("meshok_sources", []):
         scraper = MeshokScraper(src["id"], src["label"], src["url"])
         _run_source(src, scraper, cfg)
-    _log_llm_stats()
 
 
 def run_auction(cfg: dict):
     for src in cfg.get("auction_sources", []):
         scraper = AuctionScraper(src["id"], src["label"], src["url"])
         _run_source(src, scraper, cfg)
-    _log_llm_stats()
 
 
 def run_avito(cfg: dict):
     for src in cfg.get("avito_sources", []):
         scraper = AvitoScraper(src["id"], src["label"], src["url"])
         _run_source(src, scraper, cfg)
-    _log_llm_stats()
-
-
-def _log_llm_stats():
-    stats = get_llm_stats()
-    logger.info("LLM stats: calls=%d tokens=%d", stats["calls"], stats["tokens"])
-    jstats = get_jubilee_stats()
-    logger.info("Jubilee stats: calls=%d tokens=%d", jstats["calls"], jstats["tokens"])
 
 
 def main():

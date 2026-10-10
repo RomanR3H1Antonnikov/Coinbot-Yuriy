@@ -163,6 +163,19 @@ def mark_seen(lot_id: str, source: str):
         )
 
 
+def title_already_found(title: str, days: int = 30) -> bool:
+    """True if a lot with the same title was already sent (a seller re-listing = new lot_id)."""
+    norm = " ".join((title or "").lower().split())
+    if not norm:
+        return False
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT title FROM found_lots WHERE found_at >= datetime('now', ?)",
+            (f"-{days} days",),
+        ).fetchall()
+    return any(" ".join((r["title"] or "").lower().split()) == norm for r in rows)
+
+
 def save_found_lot(lot: dict):
     with db_conn() as conn:
         conn.execute(
