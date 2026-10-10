@@ -68,7 +68,7 @@ def _run_source(src: dict, scraper, cfg: dict):
     # Only lots that carry a keyword count as "reviewed" in the report
     reviewed = {id(l) for l in keyword_filter([l for l, _ in pre_rejected], kw_all)}
     rejected += [(l, "rules", reason) for l, reason in pre_rejected if id(l) in reviewed]
-    logger.info("[%s] After pre_filter: %d lots (%d rejected by price)", src_id, len(lots), len(pre_rejected))
+    logger.info("[%s] After pre_filter: %d lots (%d rejected by rules)", src_id, len(lots), len(pre_rejected))
 
     unseen = [l for l in lots if not is_seen(l["lot_id"], src_id)]
     confirmed = keyword_filter(unseen, kw_all)
