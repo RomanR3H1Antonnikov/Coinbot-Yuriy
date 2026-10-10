@@ -61,8 +61,8 @@ def _run_source(src: dict, scraper, cfg: dict):
 
     rejected: list[tuple[dict, str, str]] = []  # (lot, stage, reason) for the /rejected report
 
-    # Since 10.10 there is no AI and no year/jubilee rules: every keyword hit is sent,
-    # except cheap buy-now lots and repeats.
+    # Since 10.10 there is no AI: text rules (россыпь, годовик, копейки, до 1965, дешёвый buy-now)
+    # plus repeats are the only filters; every other keyword hit is sent.
     pre_rejected: list[tuple[dict, str]] = []
     lots = pre_filter(lots, kw_direct, kw_always, rejected=pre_rejected)
     # Only lots that carry a keyword count as "reviewed" in the report
