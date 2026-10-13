@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 _REJECT_WORDS = ["годовик"]
 _REJECT_KOPEK = ["копеек", "копейка", "копейки"]
-_CUTOFF_YEAR = 1965
 _MIN_BUY_NOW_PRICE = 500
 _MULTILOT_MIN_COINS = 4
 _MULTILOT_RE = re.compile(r"\bлот\w*\s+из\s+(\d+)")
@@ -29,11 +28,6 @@ def _reject_reason(lot: dict, is_direct, is_always) -> str | None:
 
     if any(k in title for k in _REJECT_KOPEK):
         return "копейки"
-
-    # Denomination and year are usually in the first 60 chars of the title
-    years = [int(y) for y in re.findall(r"\b(1[89]\d{2}|20[0-2]\d)\b", title[:60])]
-    if years and min(years) < _CUTOFF_YEAR:
-        return f"монета до {_CUTOFF_YEAR} г."
 
     if lot.get("sale_type") == "buy_now" and not is_direct(lot_text(lot)):
         price_val = _parse_price(lot.get("price", ""))
