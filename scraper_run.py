@@ -59,6 +59,13 @@ def _run_source(src: dict, scraper, cfg: dict):
         set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
         return
 
+    if since is None and src.get("baseline_first_run"):
+        for lot in lots:
+            mark_seen(lot["lot_id"], src_id)
+        logger.info("[%s] First run: remembered %d current lots, no alerts", src_id, len(lots))
+        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
+        return
+
     rejected: list[tuple[dict, str, str]] = []  # (lot, stage, reason) for the /rejected report
 
     # Since 10.10 there is no AI: text rules (россыпь, годовик, копейки, до 1965, дешёвый buy-now)

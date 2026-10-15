@@ -64,10 +64,10 @@ class AvitoScraper(BaseScraper):
                 break
 
             if resp.status_code == 429:
-                logger.warning("Avito [%s]: 429 rate-limited — datacenter IP blocked", self.source_id)
+                logger.warning("Avito [%s]: 429 rate-limited — need a Russian residential IP (turn off VPN for avito.ru)", self.source_id)
                 break
             if resp.status_code == 403:
-                logger.warning("Avito [%s]: 403 forbidden", self.source_id)
+                logger.warning("Avito [%s]: 403 forbidden — check that avito.ru goes through a Russian IP", self.source_id)
                 break
             if not resp.ok:
                 logger.error("Avito [%s]: HTTP %d", self.source_id, resp.status_code)
