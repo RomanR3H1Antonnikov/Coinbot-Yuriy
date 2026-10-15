@@ -56,7 +56,9 @@ def _run_source(src: dict, scraper, cfg: dict):
     logger.info("[%s] Fetched %d lots", src_id, len(lots))
 
     if not lots:
-        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
+        # A blocked Avito fetch returns 0 lots: keep the first-run baseline pending
+        if not (since is None and src.get("baseline_first_run")):
+            set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
         return
 
     if since is None and src.get("baseline_first_run"):
