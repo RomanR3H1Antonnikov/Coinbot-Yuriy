@@ -5,6 +5,7 @@ Entry point for cron: python scraper_run.py --source meshok|auction|avito|all
 import argparse
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 import yaml
@@ -146,18 +147,26 @@ def run_avito(cfg: dict):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", choices=["meshok", "auction", "avito", "all"], default="all")
+    parser.add_argument("--loop", type=int, metavar="MINUTES", default=0,
+                        help="repeat every N minutes until Ctrl+C (for running in a terminal)")
     args = parser.parse_args()
 
     init_db()
-    purge_rejected(30)
-    cfg = load_config()
+    while True:
+        purge_rejected(30)
+        cfg = load_config()
 
-    if args.source in ("meshok", "all"):
-        run_meshok(cfg)
-    if args.source in ("auction", "all"):
-        run_auction(cfg)
-    if args.source in ("avito", "all"):
-        run_avito(cfg)
+        if args.source in ("meshok", "all"):
+            run_meshok(cfg)
+        if args.source in ("auction", "all"):
+            run_auction(cfg)
+        if args.source in ("avito", "all"):
+            run_avito(cfg)
+
+        if not args.loop:
+            break
+        logger.info("Next run in %d min (Ctrl+C to stop)", args.loop)
+        time.sleep(args.loop * 60)
 
 
 if __name__ == "__main__":
