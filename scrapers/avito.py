@@ -44,13 +44,6 @@ class AvitoScraper(BaseScraper):
         return self._session
 
     def fetch_new_lots(self, since: str | None = None) -> list[dict]:
-        if not _PROXY:
-            logger.warning(
-                "Avito [%s]: AVITO_PROXY not set — Avito blocks datacenter IPs. "
-                "Set AVITO_PROXY=http://user:pass@host:port in .env to enable.",
-                self.source_id,
-            )
-
         lots = []
         s = self._get_session()
 

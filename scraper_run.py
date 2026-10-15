@@ -5,6 +5,7 @@ Entry point for cron: python scraper_run.py --source meshok|auction|avito|all
 import argparse
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -150,6 +151,18 @@ def main():
     parser.add_argument("--loop", type=int, metavar="MINUTES", default=0,
                         help="repeat every N minutes until Ctrl+C (for running in a terminal)")
     args = parser.parse_args()
+
+    if args.loop:
+        # Terminal mode: show what is happening instead of an empty window
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        console = logging.StreamHandler(sys.stdout)
+        console.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+        logging.getLogger().addHandler(console)
+        logger.info("Started: source=%s, repeat every %d min", args.source, args.loop)
 
     init_db()
     while True:
