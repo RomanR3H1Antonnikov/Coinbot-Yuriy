@@ -3,7 +3,7 @@
 Use it when the scraper reports "Avito BLOCKED": click "Продолжить" / pass the check yourself in the window,
 make sure the Avito page loads normally, then press Enter in this terminal. The cookies are saved in
 .avito_profile and the scraper reuses them.
-Run:  .venv\Scripts\python.exe avito_unblock.py
+Run:  .venv/Scripts/python.exe avito_unblock.py  (or .venv' Scripts python)
 """
 import os
 import sys
