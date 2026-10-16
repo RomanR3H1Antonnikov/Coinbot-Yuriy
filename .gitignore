@@ -16,3 +16,4 @@ logs/*.log
 dist/
 build/
 .DS_Store
+.avito_profile/

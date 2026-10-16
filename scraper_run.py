@@ -24,7 +24,7 @@ from pipeline.enrich import enrich_with_description
 from pipeline.dedup import dedup
 from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
-from scrapers.avito import AvitoScraper
+from scrapers.avito import AvitoScraper, close_browser as close_avito_browser
 from utils.notifier import send_alert
 from utils.logger import setup_logger
 
@@ -143,6 +143,7 @@ def run_avito(cfg: dict):
     for src in cfg.get("avito_sources", []):
         scraper = AvitoScraper(src["id"], src["label"], src["url"])
         _run_source(src, scraper, cfg)
+    close_avito_browser()
 
 
 def main():
