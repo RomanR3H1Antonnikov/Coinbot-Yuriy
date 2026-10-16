@@ -14,19 +14,12 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.avito.ru"
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROFILE_DIR = os.path.join(BASE_DIR, ".avito_profile")        # persistent Chrome profile (cookies)
+PROFILE_DIR = os.path.join(BASE_DIR, ".avito_profile_cdp")    # persistent Chrome profile (cookies)
+CDP_PORT = 9223
 BLOCK_FILE = os.path.join(BASE_DIR, "logs", "avito_blocked_until.txt")
 BLOCK_BACKOFF_H = 3          # after a soft block stay away from Avito this long
 PAGES_PER_SOURCE = 2
-HEADLESS = os.getenv("AVITO_HEADLESS", "1") != "0"
-
-# Removes the main automation fingerprints that QRATOR checks (same idea as the old MarketRadar parser)
-_STEALTH_JS = """
-Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-if (!window.chrome) { window.chrome = {app: {isInstalled: false}, csi: function(){}, loadTimes: function(){}, runtime: {}}; }
-Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
-"""
-
+VISIBLE = os.getenv("AVITO_VISIBLE", "0") == "1"   # show the Chrome window (debugging)
 
 class AvitoBlocked(Exception):
     """Avito/QRATOR refused this session (soft block or unresolved challenge)."""
@@ -73,85 +66,119 @@ def _extract_lot_id(href: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _find_chrome() -> str:
+    for base in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)"), os.environ.get("LOCALAPPDATA")):
+        if base:
+            path = os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")
+            if os.path.exists(path):
+                return path
+    raise RuntimeError("Google Chrome not found")
+
+
+def _content(page) -> str:
+    """page.content() raises while a redirect is still navigating; retry a few times."""
+    for _ in range(6):
+        try:
+            return page.content()
+        except Exception as e:
+            if "navigating" not in str(e):
+                raise
+            time.sleep(2)
+    return page.content()
+
+
 class _Browser:
-    """One real Chrome (persistent profile) shared by all Avito sources of a run."""
+    """A normally launched Google Chrome driven over CDP.
+
+    Playwright-launched Chrome (automation flags) is flagged by QRATOR with "проблема с IP" even on a clean
+    residential IP; a regular chrome.exe with a remote-debugging port is accepted. One Chrome is shared by
+    all Avito sources of a run.
+    """
 
     def __init__(self) -> None:
+        self._proc = None
         self._pw = None
-        self._ctx = None
+        self._browser = None
+        self._page = None
         self.warmed = False
 
     def start(self) -> None:
+        import subprocess
         from playwright.sync_api import sync_playwright
         os.makedirs(PROFILE_DIR, exist_ok=True)
+        args = [
+            _find_chrome(), f"--remote-debugging-port={CDP_PORT}", f"--user-data-dir={PROFILE_DIR}",
+            "--no-first-run", "--no-default-browser-check", "--lang=ru-RU", "--window-size=1400,900",
+        ]
+        if not VISIBLE:
+            args += ["--window-position=-2400,-2400"]
+        args.append("about:blank")
+        self._proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._pw = sync_playwright().start()
-        self._ctx = self._pw.chromium.launch_persistent_context(
-            PROFILE_DIR,
-            channel="chrome",                    # system Google Chrome: real TLS/HTTP2 fingerprint
-            headless=HEADLESS,
-            viewport={"width": 1600, "height": 900},
-            locale="ru-RU",
-            timezone_id="Europe/Moscow",
-            args=["--disable-blink-features=AutomationControlled", "--lang=ru-RU"],
-        )
-        self._ctx.add_init_script(_STEALTH_JS)
-        logger.info("Avito: Chrome started (headless=%s)", HEADLESS)
+        last = None
+        for _ in range(20):
+            time.sleep(1)
+            try:
+                self._browser = self._pw.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
+                break
+            except Exception as e:
+                last = e
+        if not self._browser:
+            raise RuntimeError(f"cannot attach to Chrome: {last}")
+        ctx = self._browser.contexts[0]
+        self._page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        logger.info("Avito: Chrome started")
 
     def close(self) -> None:
-        for obj in (self._ctx, self._pw):
+        for obj in (self._browser, self._pw):
             try:
                 if obj:
                     obj.close() if hasattr(obj, "close") else obj.stop()
             except Exception:
                 pass
-        self._ctx = self._pw = None
+        if self._proc:
+            try:
+                import subprocess
+                subprocess.run(["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+        self._proc = self._pw = self._browser = self._page = None
         self.warmed = False
 
     def _settle(self, page) -> str:
         """Wait for the QRATOR JS challenge to resolve and return the page HTML."""
-        try:
-            page.wait_for_load_state("networkidle", timeout=12_000)
-        except Exception:
-            pass
-        html = page.content()
+        time.sleep(5)
+        html = _content(page)
         for attempt in range(6):
             if not _is_challenge_or_block(html):
                 break
             logger.info("Avito: challenge page, waiting (%d/6)...", attempt + 1)
             time.sleep(5)
-            try:
-                page.wait_for_load_state("networkidle", timeout=6_000)
-            except Exception:
-                pass
-            html = page.content()
+            html = _content(page)
         return html
 
     def warm_up(self) -> None:
         if self.warmed:
             return
-        page = self._ctx.new_page()
-        try:
-            page.goto(BASE_URL + "/", wait_until="load", timeout=40_000)
-            html = self._settle(page)
-            if _is_challenge_or_block(html):
-                raise AvitoBlocked("homepage challenge/soft block")
-            time.sleep(random.uniform(3, 6))
-            self.warmed = True
-        finally:
-            page.close()
+        self._page.goto(BASE_URL + "/", wait_until="domcontentloaded", timeout=45_000)
+        html = self._settle(self._page)
+        if _is_challenge_or_block(html):
+            raise AvitoBlocked("homepage challenge/soft block")
+        time.sleep(random.uniform(3, 6))
+        self.warmed = True
 
     def fetch(self, url: str, referer: str = BASE_URL + "/") -> str:
-        page = self._ctx.new_page()
-        try:
-            resp = page.goto(url, wait_until="load", timeout=40_000, referer=referer)
-            status = resp.status if resp else 0
-            html = self._settle(page)
-            if _is_challenge_or_block(html) or status in (403, 429, 439):
-                raise AvitoBlocked(f"HTTP {status}, challenge/soft block")
-            time.sleep(random.uniform(2, 4))
-            return html
-        finally:
-            page.close()
+        resp = self._page.goto(url, wait_until="domcontentloaded", timeout=45_000, referer=referer)
+        status = resp.status if resp else 0
+        html = self._settle(self._page)
+        if _is_challenge_or_block(html) or status in (403, 429, 439):
+            raise AvitoBlocked(f"HTTP {status}, challenge/soft block")
+        time.sleep(random.uniform(2, 4))
+        return html
 
 
 _browser: _Browser | None = None

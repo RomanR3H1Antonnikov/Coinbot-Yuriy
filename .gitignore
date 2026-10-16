@@ -17,3 +17,4 @@ dist/
 build/
 .DS_Store
 .avito_profile/
+.avito_profile_cdp/
