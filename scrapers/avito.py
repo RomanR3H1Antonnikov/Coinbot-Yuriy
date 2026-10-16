@@ -218,7 +218,11 @@ class AvitoScraper(BaseScraper):
                     logger.info("Avito [%s]: no lots on page %d (%.0f KB)",
                                 self.source_id, page_no, len(html) / 1024)
                     break
-                lots.extend(page_lots)
+                known = {l["lot_id"] for l in lots}
+                fresh = [l for l in page_lots if l["lot_id"] not in known]
+                if not fresh:  # short result: page 2 repeats page 1
+                    break
+                lots.extend(fresh)
                 time.sleep(random.uniform(6, 12))
             _clear_block()
         except AvitoBlocked as e:
@@ -266,6 +270,7 @@ class AvitoScraper(BaseScraper):
             seen.add(lot_id)
 
             full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
+            full_url = full_url.rstrip("?")
             title = a.get_text(strip=True)
 
             # Price

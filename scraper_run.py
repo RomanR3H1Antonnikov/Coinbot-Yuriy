@@ -26,6 +26,7 @@ from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
 from scrapers.avito import AvitoScraper, close_browser as close_avito_browser
 from utils.notifier import send_alert
+from utils.vps_sync import sync_to_vps
 from utils.logger import setup_logger
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -112,9 +113,10 @@ def _run_source(src: dict, scraper, cfg: dict):
     new_finds = dedup(confirmed)
     logger.info("[%s] After dedup: %d new finds", src_id, len(new_finds))
 
+    sent = []
     for lot in new_finds:
         send_alert(lot)
-        save_found_lot({
+        row = {
             "lot_id": lot["lot_id"],
             "source": lot["source"],
             "url": lot["url"],
@@ -122,7 +124,12 @@ def _run_source(src: dict, scraper, cfg: dict):
             "price": lot.get("price"),
             "photo_url": lot.get("photo_url"),
             "summary": None,
-        })
+        }
+        save_found_lot(row)
+        sent.append(row)
+
+    if src_id.startswith("avito"):  # local DB -> VPS DB, so the bot sees Avito in /logs, /list, /rejected
+        sync_to_vps(sent, rejected)
 
     set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
 
