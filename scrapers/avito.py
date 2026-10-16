@@ -270,7 +270,7 @@ class AvitoScraper(BaseScraper):
             seen.add(lot_id)
 
             full_url = f"{BASE_URL}{href}" if href.startswith("/") else href
-            full_url = full_url.rstrip("?")
+            full_url = full_url.split("?")[0]  # drop tracking query (slocation, context=...)
             title = a.get_text(strip=True)
 
             # Price
