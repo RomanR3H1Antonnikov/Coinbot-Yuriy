@@ -144,3 +144,169 @@ avito_sources:
     baseline_first_run: true
     label: "Авито — Смещение/Раскол"
     url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%81%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D0%B5+%D1%80%D0%B0%D1%81%D0%BA%D0%BE%D0%BB&s=104"
+  # Остальные ключевые слова: по одному запросу на слово, 1 страница (самые новые)
+  - id: avito_kw01
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — заготовка"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B7%D0%B0%D0%B3%D0%BE%D1%82%D0%BE%D0%B2%D0%BA%D0%B0&s=104"
+  - id: avito_kw02
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — муляж"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BC%D1%83%D0%BB%D1%8F%D0%B6&s=104"
+  - id: avito_kw03
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — мул"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BC%D1%83%D0%BB&s=104"
+  - id: avito_kw04
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — ошибка"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BE%D1%88%D0%B8%D0%B1%D0%BA%D0%B0&s=104"
+  - id: avito_kw05
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — пробная"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BF%D1%80%D0%BE%D0%B1%D0%BD%D0%B0%D1%8F&s=104"
+  - id: avito_kw06
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — оттиск"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BE%D1%82%D1%82%D0%B8%D1%81%D0%BA&s=104"
+  - id: avito_kw07
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — разновидность"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%80%D0%B0%D0%B7%D0%BD%D0%BE%D0%B2%D0%B8%D0%B4%D0%BD%D0%BE%D1%81%D1%82%D1%8C&s=104"
+  - id: avito_kw08
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — перепутка"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BF%D0%B5%D1%80%D0%B5%D0%BF%D1%83%D1%82%D0%BA%D0%B0&s=104"
+  - id: avito_kw09
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — без гуртовой надписи"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B1%D0%B5%D0%B7+%D0%B3%D1%83%D1%80%D1%82%D0%BE%D0%B2%D0%BE%D0%B9+%D0%BD%D0%B0%D0%B4%D0%BF%D0%B8%D1%81%D0%B8&s=104"
+  - id: avito_kw10
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — двойная накатка гуртовой надписи"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B4%D0%B2%D0%BE%D0%B9%D0%BD%D0%B0%D1%8F+%D0%BD%D0%B0%D0%BA%D0%B0%D1%82%D0%BA%D0%B0+%D0%B3%D1%83%D1%80%D1%82%D0%BE%D0%B2%D0%BE%D0%B9+%D0%BD%D0%B0%D0%B4%D0%BF%D0%B8%D1%81%D0%B8&s=104"
+  - id: avito_kw11
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — фальшивка"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%84%D0%B0%D0%BB%D1%8C%D1%88%D0%B8%D0%B2%D0%BA%D0%B0&s=104"
+  - id: avito_kw12
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — образец"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BE%D0%B1%D1%80%D0%B0%D0%B7%D0%B5%D1%86&s=104"
+  - id: avito_kw13
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — инкуз"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B8%D0%BD%D0%BA%D1%83%D0%B7&s=104"
+  - id: avito_kw14
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — перечекан"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BF%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BA%D0%B0%D0%BD&s=104"
+  - id: avito_kw15
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — гашеная"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B3%D0%B0%D1%88%D0%B5%D0%BD%D0%B0%D1%8F&s=104"
+  - id: avito_kw16
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — выкус"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B2%D1%8B%D0%BA%D1%83%D1%81&s=104"
+  - id: avito_kw17
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — двойной выкус"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B4%D0%B2%D0%BE%D0%B9%D0%BD%D0%BE%D0%B9+%D0%B2%D1%8B%D0%BA%D1%83%D1%81&s=104"
+  - id: avito_kw18
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — тройной выкус"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%82%D1%80%D0%BE%D0%B9%D0%BD%D0%BE%D0%B9+%D0%B2%D1%8B%D0%BA%D1%83%D1%81&s=104"
+  - id: avito_kw19
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — смещение"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%81%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D0%B5&s=104"
+  - id: avito_kw20
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — щель"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%89%D0%B5%D0%BB%D1%8C&s=104"
+  - id: avito_kw21
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — без краски"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B1%D0%B5%D0%B7+%D0%BA%D1%80%D0%B0%D1%81%D0%BA%D0%B8&s=104"
+  - id: avito_kw22
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — поворот"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BF%D0%BE%D0%B2%D0%BE%D1%80%D0%BE%D1%82&s=104"
+  - id: avito_kw23
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — несоостность"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BD%D0%B5%D1%81%D0%BE%D0%BE%D1%81%D1%82%D0%BD%D0%BE%D1%81%D1%82%D1%8C&s=104"
+  - id: avito_kw24
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — полный раскол"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BF%D0%BE%D0%BB%D0%BD%D1%8B%D0%B9+%D1%80%D0%B0%D1%81%D0%BA%D0%BE%D0%BB&s=104"
+  - id: avito_kw25
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — чечевица"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%87%D0%B5%D1%87%D0%B5%D0%B2%D0%B8%D1%86%D0%B0&s=104"
+  - id: avito_kw26
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — непрочекан"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BD%D0%B5%D0%BF%D1%80%D0%BE%D1%87%D0%B5%D0%BA%D0%B0%D0%BD&s=104"
+  - id: avito_kw27
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — соударение"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%81%D0%BE%D1%83%D0%B4%D0%B0%D1%80%D0%B5%D0%BD%D0%B8%D0%B5&s=104"
+  - id: avito_kw28
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — легкая"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BB%D0%B5%D0%B3%D0%BA%D0%B0%D1%8F&s=104"
+  - id: avito_kw29
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — тяжелая"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%82%D1%8F%D0%B6%D0%B5%D0%BB%D0%B0%D1%8F&s=104"
+  - id: avito_kw30
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — лунка"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BB%D1%83%D0%BD%D0%BA%D0%B0&s=104"
+  - id: avito_kw31
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — вне кольца"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%B2%D0%BD%D0%B5+%D0%BA%D0%BE%D0%BB%D1%8C%D1%86%D0%B0&s=104"
+  - id: avito_kw32
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — раскол"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D1%80%D0%B0%D1%81%D0%BA%D0%BE%D0%BB&s=104"
+  - id: avito_kw33
+    baseline_first_run: true
+    pages: 1
+    label: "Авито — несоосность"
+    url: "https://www.avito.ru/all/kollektsionirovanie/monety-ASgBAgICAUQcmgE?cd=1&q=%D0%BD%D0%B5%D1%81%D0%BE%D0%BE%D1%81%D0%BD%D0%BE%D1%81%D1%82%D1%8C&s=104"

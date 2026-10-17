@@ -149,6 +149,7 @@ def run_auction(cfg: dict):
 def run_avito(cfg: dict):
     for src in cfg.get("avito_sources", []):
         scraper = AvitoScraper(src["id"], src["label"], src["url"])
+        scraper.pages = src.get("pages")
         _run_source(src, scraper, cfg)
     close_avito_browser()
 

@@ -210,7 +210,7 @@ class AvitoScraper(BaseScraper):
                 _browser.start()
             _browser.warm_up()
 
-            for page_no in range(1, PAGES_PER_SOURCE + 1):
+            for page_no in range(1, (getattr(self, 'pages', None) or PAGES_PER_SOURCE) + 1):
                 page_url = f"{self.url}&p={page_no}" if "?" in self.url else f"{self.url}?p={page_no}"
                 html = _browser.fetch(page_url)
                 page_lots = self._parse_page(BeautifulSoup(html, "lxml"))
