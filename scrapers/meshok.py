@@ -72,7 +72,7 @@ class MeshokScraper(BaseScraper):
             cutoff = datetime.fromisoformat(since) - timedelta(minutes=20)
             if cutoff.tzinfo is None:
                 cutoff = cutoff.replace(tzinfo=timezone.utc)
-        max_pages = 15 if cutoff else 5
+        max_pages = 40 if cutoff else 5
 
         s = self._get_session()
         lots, seen = [], set()
