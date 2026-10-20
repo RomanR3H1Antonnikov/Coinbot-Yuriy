@@ -1,6 +1,7 @@
 import time
 import re
 import logging
+from datetime import datetime, timedelta, timezone
 
 from bs4 import BeautifulSoup
 from curl_cffi import requests as cf_requests
@@ -49,6 +50,95 @@ class MeshokScraper(BaseScraper):
         return self._session
 
     def fetch_new_lots(self, since: str | None = None) -> list[dict]:
+        """Newest-first via the site's own JSON API. The HTML listing is sorted by auction end
+        date (soonest first) and ignores ?sort=, so new lots never reached its first 100."""
+        try:
+            lots = self._fetch_api(since)
+            if lots:
+                return lots
+            logger.warning("Meshok API returned no lots for %s, falling back to HTML", self.source_id)
+        except Exception as e:
+            logger.warning("Meshok API failed for %s (%s), falling back to HTML", self.source_id, e)
+        return self._fetch_html()
+
+    def _fetch_api(self, since: str | None) -> list[dict]:
+        m = re.search(r"(?:good=|/good/)(\d+)", self.url)
+        if not m:
+            raise ValueError(f"no category id in {self.url}")
+        category_id = int(m.group(1))
+
+        cutoff = None
+        if since:
+            cutoff = datetime.fromisoformat(since) - timedelta(minutes=20)
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+        max_pages = 15 if cutoff else 5
+
+        s = self._get_session()
+        lots, seen = [], set()
+        for page in range(1, max_pages + 1):
+            body = {
+                "sellerMode": False,
+                "filter": {
+                    "availability": None, "categoryId": category_id, "excludedCategoryIds": None,
+                    "searchString": None, "status": "active", "showOnly": None, "timeline": None,
+                    "location": {"cityId": 32, "option": "deliverable", "freeDelivery": False, "pickup": False},
+                    "condition": None, "type": None, "priceStart": None, "priceEnd": None,
+                    "quantity": None, "properties": None, "tags": None, "excludedSellers": None,
+                    "sellerId": None, "bidderId": None, "related": None, "soldStatus": None,
+                    "fromT": None, "tillT": None, "endsFromT": None, "endsTillT": None,
+                    "fromD": None, "tillD": None, "endsFromD": None, "endsTillD": None,
+                    "standardDescriptionId": None, "page": page, "pageSize": 20,
+                    "sort": {"field": "beginDate", "direction": 1},
+                },
+                "includes": {"lots": True, "stats": False},
+                "saveSearchRequest": False, "featuredLotsFirst": False, "onlyWithPicture": False,
+            }
+            data = None
+            for attempt in range(3):
+                try:
+                    resp = s.post(f"{BASE_URL}/api/command/lots/get-items", json=body, timeout=25)
+                    resp.raise_for_status()
+                    data = resp.json()["result"]["lots"]
+                    break
+                except Exception as e:
+                    logger.warning("Meshok API attempt %d/3 failed (%s p%d): %s",
+                                   attempt + 1, self.source_id, page, e)
+                    time.sleep(3 * (attempt + 1))
+            if data is None:
+                raise RuntimeError("API unreachable")
+            if not data:
+                break
+
+            reached_old = False
+            for it in data:
+                begin = datetime.fromisoformat(it["beginDate"].replace("Z", "+00:00"))
+                if cutoff and begin < cutoff:
+                    reached_old = True
+                    continue
+                lot_id = str(it["id"])
+                if lot_id in seen:
+                    continue
+                seen.add(lot_id)
+                pics = it.get("pictures") or []
+                price = it.get("price")
+                lots.append({
+                    "lot_id": lot_id,
+                    "source": self.source_id,
+                    "source_label": self.label,
+                    "url": f"{BASE_URL}/item/{lot_id}",
+                    "title": (it.get("title") or "").strip(),
+                    "price": f"{int(price):,}".replace(",", " ") + " ₽" if price else "",
+                    "photo_url": BASE_URL + pics[0]["url"] if pics else None,
+                    "description": (it.get("title") or "").strip(),
+                    "published_at": begin.isoformat(),
+                })
+            if reached_old:
+                break
+            time.sleep(1)
+        return lots
+
+    def _fetch_html(self) -> list[dict]:
         lots = []
         s = self._get_session()
 
