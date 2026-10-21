@@ -1,3 +1,4 @@
+import html
 import time
 import re
 import logging
@@ -127,10 +128,10 @@ class MeshokScraper(BaseScraper):
                     "source": self.source_id,
                     "source_label": self.label,
                     "url": f"{BASE_URL}/item/{lot_id}",
-                    "title": (it.get("title") or "").strip(),
+                    "title": html.unescape(it.get("title") or "").strip(),
                     "price": f"{int(price):,}".replace(",", " ") + " ₽" if price else "",
                     "photo_url": BASE_URL + pics[0]["url"] if pics else None,
-                    "description": (it.get("title") or "").strip(),
+                    "description": html.unescape(it.get("title") or "").strip(),
                     "published_at": begin.isoformat(),
                 })
             if reached_old:
