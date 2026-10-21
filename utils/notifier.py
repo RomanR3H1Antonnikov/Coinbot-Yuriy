@@ -60,22 +60,18 @@ def _download_photo(photo_url: str) -> bytes | None:
 
 
 def _send_photo(base_url: str, cid: str, photo_url: str, text: str):
-    if "meshok.net" in photo_url:  # known to be unreachable for Telegram
-        data = _download_photo(photo_url)
-        if data:
-            return requests.post(f"{base_url}/sendPhoto",
-                                 data={"chat_id": cid, "caption": text, "parse_mode": "HTML"},
-                                 files={"photo": ("lot.jpg", data)}, timeout=30)
-    resp = requests.post(f"{base_url}/sendPhoto",
+    """Always upload the downloaded image first (a big photo, no dependence on Telegram being
+    able to fetch the host); fall back to passing the URL if the download fails."""
+    data = _download_photo(photo_url)
+    if data:
+        resp = requests.post(f"{base_url}/sendPhoto",
+                             data={"chat_id": cid, "caption": text, "parse_mode": "HTML"},
+                             files={"photo": ("lot.jpg", data)}, timeout=30)
+        if resp.ok:
+            return resp
+    return requests.post(f"{base_url}/sendPhoto",
                          json={"chat_id": cid, "photo": photo_url, "caption": text, "parse_mode": "HTML"},
                          timeout=10)
-    if not resp.ok:
-        data = _download_photo(photo_url)
-        if data:
-            resp = requests.post(f"{base_url}/sendPhoto",
-                                 data={"chat_id": cid, "caption": text, "parse_mode": "HTML"},
-                                 files={"photo": ("lot.jpg", data)}, timeout=30)
-    return resp
 
 
 def _send_to(base_url: str, cid: str, text: str, photo_url: str | None, title: str):
