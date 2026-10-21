@@ -46,14 +46,42 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
         _send_to(base_url, cid, text, photo_url, title)
 
 
+def _download_photo(photo_url: str) -> bytes | None:
+    """Telegram cannot fetch some hosts itself (meshok.net -> 'failed to get HTTP URL content'),
+    so the image is downloaded here and uploaded; otherwise the alert shows only a tiny link preview."""
+    try:
+        from curl_cffi import requests as cf
+        r = cf.get(photo_url, impersonate="chrome124", timeout=20)
+        if r.status_code == 200 and r.content[:3] in (b"ÿØÿ", b"PN", b"GIF", b"RIF"):
+            return r.content
+    except Exception as e:
+        logger.warning("photo download failed (%s): %s", photo_url, e)
+    return None
+
+
+def _send_photo(base_url: str, cid: str, photo_url: str, text: str):
+    if "meshok.net" in photo_url:  # known to be unreachable for Telegram
+        data = _download_photo(photo_url)
+        if data:
+            return requests.post(f"{base_url}/sendPhoto",
+                                 data={"chat_id": cid, "caption": text, "parse_mode": "HTML"},
+                                 files={"photo": ("lot.jpg", data)}, timeout=30)
+    resp = requests.post(f"{base_url}/sendPhoto",
+                         json={"chat_id": cid, "photo": photo_url, "caption": text, "parse_mode": "HTML"},
+                         timeout=10)
+    if not resp.ok:
+        data = _download_photo(photo_url)
+        if data:
+            resp = requests.post(f"{base_url}/sendPhoto",
+                                 data={"chat_id": cid, "caption": text, "parse_mode": "HTML"},
+                                 files={"photo": ("lot.jpg", data)}, timeout=30)
+    return resp
+
+
 def _send_to(base_url: str, cid: str, text: str, photo_url: str | None, title: str):
     try:
         if photo_url:
-            resp = requests.post(
-                f"{base_url}/sendPhoto",
-                json={"chat_id": cid, "photo": photo_url, "caption": text, "parse_mode": "HTML"},
-                timeout=10,
-            )
+            resp = _send_photo(base_url, cid, photo_url, text)
             if not resp.ok:
                 resp = requests.post(
                     f"{base_url}/sendMessage",
