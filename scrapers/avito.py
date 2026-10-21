@@ -211,8 +211,46 @@ class _Browser:
         html = self._settle(self._page)
         if _is_challenge_or_block(html) or status in (403, 429, 439):
             raise AvitoBlocked(f"HTTP {status}, challenge/soft block")
+        html = self._scroll_and_read(html)
         time.sleep(random.uniform(2, 4))
         return html
+
+    def _scroll_and_read(self, html: str) -> str:
+        """Scroll down in steps so lazy-loaded card photos get their src, then re-read the HTML."""
+        try:
+            for _ in range(10):
+                self._page.mouse.wheel(0, random.randint(800, 1000))
+                time.sleep(random.uniform(0.5, 0.9))
+            time.sleep(1.5)
+            fresh = _content(self._page)
+            if not _is_challenge_or_block(fresh):
+                return fresh
+        except Exception as e:
+            logger.debug("Avito: scroll failed: %s", e)
+        return html
+
+
+def _photo_candidate(tag) -> str | None:
+    """Best image URL from an <img>/<source> tag: src, data-src, or the last (largest) srcset entry."""
+    for attr in ("src", "data-src", "data-lazy-src"):
+        v = (tag.get(attr) or "").strip()
+        if v and not v.startswith("data:") and not v.endswith(".gif"):
+            return v
+    for attr in ("srcset", "data-srcset"):
+        v = (tag.get(attr) or "").strip()
+        if v:
+            first = v.split(",")[-1].strip().split(" ")[0]
+            if first and not first.startswith("data:"):
+                return first
+    return None
+
+
+def _extract_photo(item) -> str | None:
+    for tag in item.find_all(["img", "source"]):
+        v = _photo_candidate(tag)
+        if v:
+            return v if v.startswith("http") else (f"https:{v}" if v.startswith("//") else f"{BASE_URL}{v}")
+    return None
 
 
 _browser: _Browser | None = None
@@ -316,12 +354,7 @@ class AvitoScraper(BaseScraper):
                 price = price_el.get_text(strip=True)
 
             # Photo
-            photo_url = None
-            img = item.find("img") if item.name != "a" else None
-            if img:
-                src = img.get("src") or img.get("data-src") or ""
-                if src and not src.endswith("gif"):
-                    photo_url = src if src.startswith("http") else f"{BASE_URL}{src}"
+            photo_url = _extract_photo(item) if item.name != "a" else None
 
             lots.append({
                 "lot_id": lot_id,
