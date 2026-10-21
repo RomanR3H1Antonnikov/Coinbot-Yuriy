@@ -52,7 +52,7 @@ def _download_photo(photo_url: str) -> bytes | None:
     try:
         from curl_cffi import requests as cf
         r = cf.get(photo_url, impersonate="chrome124", timeout=20)
-        if r.status_code == 200 and r.content[:3] in (b"ÿØÿ", b"PN", b"GIF", b"RIF"):
+        if r.status_code == 200 and r.content[:2] in (bytes.fromhex("ffd8"), bytes.fromhex("8950"), b"GI", b"RI"):
             return r.content
     except Exception as e:
         logger.warning("photo download failed (%s): %s", photo_url, e)
