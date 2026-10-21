@@ -102,9 +102,43 @@ class _Browser:
         self._page = None
         self.warmed = False
 
+    @staticmethod
+    def _kill_stale_chrome() -> None:
+        """A Chrome left over from a hung/aborted run still owns the profile and CDP port:
+        the next launch then just attaches to a dead window or waits forever."""
+        import subprocess
+        ps = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | "
+              "Where-Object { $_.CommandLine -like '*avito_profile_cdp*' } | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
+        try:
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _wait_for_network(max_wait: int = 300) -> None:
+        """After sleep/hibernate or a VPN reconnect DNS is down for a while (ERR_NAME_NOT_RESOLVED)."""
+        import socket
+        waited = 0
+        while waited < max_wait:
+            try:
+                socket.getaddrinfo("www.avito.ru", 443)
+                if waited:
+                    logger.info("Avito: network is back after %ds", waited)
+                return
+            except OSError:
+                if waited == 0:
+                    logger.warning("Avito: www.avito.ru does not resolve, waiting for the network...")
+                time.sleep(10)
+                waited += 10
+        logger.warning("Avito: network still down after %ds, trying anyway", max_wait)
+
     def start(self) -> None:
         import subprocess
         from playwright.sync_api import sync_playwright
+        self._wait_for_network()
+        self._kill_stale_chrome()
         os.makedirs(PROFILE_DIR, exist_ok=True)
         args = [
             _find_chrome(), f"--remote-debugging-port={CDP_PORT}", f"--user-data-dir={PROFILE_DIR}",
