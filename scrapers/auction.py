@@ -10,6 +10,11 @@ from scrapers.base import BaseScraper
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://auction.ru"
+PAGES = 3  # 60 lots per page, newest first
+LISTING_QUERY = (
+    "flt_prp_is_hidden=neq_nin_MACRO_TRUE&flt_prp_offerstate=0"
+    "&flt_prp_sesend=gt__macro_now&flt_prp_sesstart=lt__macro_now&srt_prp_sesstart=dsc&ipp=60"
+)
 
 
 def _make_session() -> cf_requests.Session:
@@ -43,8 +48,10 @@ class AuctionScraper(BaseScraper):
         lots = []
         s = self._get_session()
 
-        for page in range(1, 6):
-            page_url = f"{self.url}?page={page}&sort=date"
+        # The listing is ordered by end time unless srt_prp_sesstart=dsc ("сначала новые") is set;
+        # `sort=` and `page=` are ignored by the site, the page number is `pg` (0-based).
+        for page in range(PAGES):
+            page_url = f"{self.url.split('?')[0]}?{LISTING_QUERY}&pg={page}"
 
             resp = None
             for attempt in range(3):
@@ -67,8 +74,12 @@ class AuctionScraper(BaseScraper):
                 logger.debug("Auction: no lots on page %d, stopping", page)
                 break
 
-            lots.extend(page_lots)
-            logger.debug("Auction page %d: %d lots", page, len(page_lots))
+            known = {l["lot_id"] for l in lots}
+            fresh = [l for l in page_lots if l["lot_id"] not in known]
+            if not fresh:
+                break
+            lots.extend(fresh)
+            logger.debug("Auction page %d: %d lots", page, len(fresh))
 
             time.sleep(2)
 
