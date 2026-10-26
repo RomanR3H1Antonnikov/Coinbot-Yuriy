@@ -21,8 +21,9 @@ logger = logging.getLogger("audit_avito")
 
 
 def build_report() -> str:
-    from db.database import db_conn
+    from db.database import db_conn, count_viewed
     from utils import run_journal
+    from utils.report_stats import viewed_block, photo_block
 
     recs = run_journal.read(WINDOW_H, "avito")
     if not recs:
@@ -58,8 +59,11 @@ def build_report() -> str:
     gap = _longest_gap_h(recs)
     if gap > 3.5:
         problems.append(f"самый долгий перерыв между прогонами: {gap:.1f} ч (норма 2 ч)")
+    if count_viewed("avito", WINDOW_H) == 0:
+        problems.append("за сутки не просмотрено ни одного нового лота")
     verdict = "✅ Прогоны шли штатно, потерь нет." if not problems else "⚠️ " + "\n⚠️ ".join(problems)
-    return f"📊 Сверка Авито за {WINDOW_H} ч\n\n" + "\n".join(lines) + "\n\n" + verdict
+    return (f"📊 Сверка Авито за {WINDOW_H} ч\n\n" + viewed_block(["avito"]) + "\n\n" + photo_block(["avito"])
+            + "\n\n" + "\n".join(lines) + "\n\n" + verdict)
 
 
 def _longest_gap_h(recs: list[dict]) -> float:

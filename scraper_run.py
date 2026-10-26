@@ -16,9 +16,9 @@ load_dotenv()
 
 from db.database import (
     init_db, get_last_run_at, set_last_run_at, save_found_lot,
-    is_seen, mark_seen, save_rejected, purge_rejected, title_already_found,
+    is_seen, mark_seen, save_rejected, purge_rejected, title_already_found, note_viewed,
 )
-from pipeline.keyword_filter import keyword_filter
+from pipeline.keyword_filter import keyword_filter, matched_keywords
 from pipeline.pre_filter import pre_filter
 from pipeline.enrich import enrich_with_description
 from pipeline.dedup import dedup
@@ -59,6 +59,7 @@ def _run_source(src: dict, scraper, cfg: dict):
     lots = scraper.fetch_new_lots(since=since)
     logger.info("[%s] Fetched %d lots", src_id, len(lots))
     fetched, with_photo = len(lots), sum(1 for l in lots if l.get("photo_url"))
+    note_viewed(src_id.split("_")[0], [l["lot_id"] for l in lots])
 
     if not lots:
         run_journal.write(src_id, fetched=0, with_photo=0, rules_rejected=0, hits=0, expected=[])
@@ -121,6 +122,7 @@ def _run_source(src: dict, scraper, cfg: dict):
 
     sent = []
     for lot in new_finds:
+        lot["matched"] = matched_keywords(lot, kw_all)
         send_alert(lot)
         row = {
             "lot_id": lot["lot_id"],

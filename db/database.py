@@ -81,12 +81,41 @@ def init_db():
         conn.execute(CREATE_FOUND_LOTS)
         conn.execute(CREATE_RUN_STATE)
         conn.execute(CREATE_REJECTED_LOTS)
+        conn.execute(CREATE_VIEWED_LOTS)
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(rejected_lots)")}
         if "photo_url" not in cols:
             try:
                 conn.execute("ALTER TABLE rejected_lots ADD COLUMN photo_url TEXT")
             except sqlite3.OperationalError:
                 pass  # the scraper and the bot may migrate at the same moment
+
+
+CREATE_VIEWED_LOTS = """
+CREATE TABLE IF NOT EXISTS viewed_lots (
+    platform     TEXT NOT NULL,
+    lot_id       TEXT NOT NULL,
+    first_viewed TIMESTAMP DEFAULT (datetime('now')),
+    PRIMARY KEY (platform, lot_id)
+)
+"""
+
+
+def note_viewed(platform: str, lot_ids: list[str]):
+    """Remember every lot the scraper has looked at (first time only), for the daily
+    "viewed per platform" figure."""
+    if not lot_ids:
+        return
+    with db_conn() as conn:
+        conn.executemany("INSERT OR IGNORE INTO viewed_lots (platform, lot_id) VALUES (?, ?)",
+                         [(platform, i) for i in lot_ids])
+        conn.execute("DELETE FROM viewed_lots WHERE first_viewed < datetime('now', '-45 day')")
+
+
+def count_viewed(platform: str, hours: int = 24) -> int:
+    with db_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM viewed_lots WHERE platform=? AND first_viewed >= datetime('now', ?)",
+            (platform, f"-{hours} hour")).fetchone()[0]
 
 
 def save_rejected(rows: list[tuple[dict, str, str]]):

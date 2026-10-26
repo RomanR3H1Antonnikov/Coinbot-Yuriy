@@ -24,6 +24,7 @@ from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
 from scraper_run import _keyword_sets
 from utils.notifier import BOT_TOKEN, _get_chat_ids
+from utils.report_stats import viewed_block, photo_block
 
 logger = logging.getLogger("audit")
 GRACE_H = 1   # newest lots may not have been through a cron run yet
@@ -60,7 +61,8 @@ def audit(cfg: dict) -> tuple[str, int]:
     total_missing += len(a_missing)
     missing_all += a_missing
 
-    head = (f"📊 Сверка за {WINDOW_H} ч\n\n<b>Мешок</b>\n" + "\n".join(lines)
+    head = (f"📊 Сверка за {WINDOW_H} ч\n\n" + viewed_block(["meshok", "auction"]) + "\n\n"
+            + photo_block(["meshok", "auction"]) + "\n\n<b>Мешок</b>\n" + "\n".join(lines)
             + "\n\n<b>Аукцион</b> (свежие лоты каждого раздела, по заголовкам)\n" + "\n".join(a_lines) + "\n\n"
             + ("✅ Всё, что подошло по словам, дошло или отсеяно правилами." if not total_missing
                else f"⚠️ Не дошло лотов: {total_missing}"))

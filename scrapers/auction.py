@@ -131,7 +131,7 @@ class AuctionScraper(BaseScraper):
                     try:
                         imgs = _json.loads(data_img)
                         if imgs:
-                            photo_url = imgs[0]
+                            photo_url = imgs[0].replace("/mid/", "/big/")  # mid is 400x300 at most; notifier falls back to mid
                     except Exception:
                         pass
 
