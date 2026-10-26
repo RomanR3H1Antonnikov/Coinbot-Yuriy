@@ -75,7 +75,7 @@ def _image_size(data: bytes) -> tuple[int, int] | None:
     return None
 
 
-SMALL_PX = 500  # shorter side below this is shown as a small picture in Telegram
+SMALL_PX = 600  # longer side below this is shown as a small picture in Telegram
 
 
 def _note_photo(lot: dict, data: bytes | None, photo_url: str | None) -> None:
@@ -89,7 +89,7 @@ def _note_photo(lot: dict, data: bytes | None, photo_url: str | None) -> None:
         w, h = _image_size(data) or (0, 0)
     else:
         mode, w, h = "url", 0, 0
-    run_journal.write("photo:" + lot.get("source", ""), mode=mode, w=w, h=h, small=bool(w and min(w, h) < SMALL_PX))
+    run_journal.write("photo:" + lot.get("source", ""), mode=mode, w=w, h=h, small=bool(w and max(w, h) < SMALL_PX))
 
 
 def _download_best(photo_url: str) -> tuple[bytes | None, str]:
