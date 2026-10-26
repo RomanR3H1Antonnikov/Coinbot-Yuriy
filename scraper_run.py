@@ -27,6 +27,7 @@ from scrapers.auction import AuctionScraper
 from scrapers.avito import AvitoScraper, close_browser as close_avito_browser
 from utils.notifier import send_alert
 from utils.vps_sync import sync_to_vps
+from utils import run_journal
 from utils.logger import setup_logger
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,8 +58,10 @@ def _run_source(src: dict, scraper, cfg: dict):
 
     lots = scraper.fetch_new_lots(since=since)
     logger.info("[%s] Fetched %d lots", src_id, len(lots))
+    fetched, with_photo = len(lots), sum(1 for l in lots if l.get("photo_url"))
 
     if not lots:
+        run_journal.write(src_id, fetched=0, with_photo=0, rules_rejected=0, hits=0, expected=[])
         # A blocked Avito fetch returns 0 lots: keep the first-run baseline pending
         if not (since is None and src.get("baseline_first_run")):
             set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
@@ -113,6 +116,9 @@ def _run_source(src: dict, scraper, cfg: dict):
     new_finds = dedup(confirmed)
     logger.info("[%s] After dedup: %d new finds", src_id, len(new_finds))
 
+    run_journal.write(src_id, fetched=fetched, with_photo=with_photo, rules_rejected=len(pre_rejected),
+                      hits=len(confirmed), expected=[l["lot_id"] for l in new_finds])
+
     sent = []
     for lot in new_finds:
         send_alert(lot)
@@ -152,6 +158,8 @@ def run_avito(cfg: dict):
         scraper.pages = src.get("pages")
         _run_source(src, scraper, cfg)
     close_avito_browser()
+    from audit_avito import maybe_send  # daily report, sent once after 09:00
+    maybe_send()
 
 
 def main():
