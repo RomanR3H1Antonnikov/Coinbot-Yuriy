@@ -73,7 +73,7 @@ class MeshokScraper(BaseScraper):
             cutoff = datetime.fromisoformat(since) - timedelta(hours=3)  # lots can appear in the listing long after their beginDate
             if cutoff.tzinfo is None:
                 cutoff = cutoff.replace(tzinfo=timezone.utc)
-        max_pages = 40 if cutoff else 5
+        max_pages = getattr(self, "max_pages", None) or (40 if cutoff else 5)
 
         s = self._get_session()
         lots, seen = [], set()

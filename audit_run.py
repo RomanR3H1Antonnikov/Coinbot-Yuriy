@@ -44,7 +44,9 @@ def audit(cfg: dict) -> tuple[str, int]:
 
     lines, missing_all, total_missing = [], [], 0
     for src in cfg.get("meshok_sources", []):
-        lots = MeshokScraper(src["id"], src["label"], src["url"]).fetch_new_lots(since)
+        scraper = MeshokScraper(src["id"], src["label"], src["url"])
+        scraper.max_pages = 150  # a busy section gives ~60 lots/h; the default 40 pages cover only ~13 h
+        lots = scraper.fetch_new_lots(since)
         lots = [l for l in lots if datetime.fromisoformat(l["published_at"]) <= edge
                 and datetime.fromisoformat(l["published_at"]) >= now - timedelta(hours=WINDOW_H + GRACE_H)]
         rules_rej: list = []
