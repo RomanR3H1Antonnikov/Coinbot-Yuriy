@@ -48,7 +48,10 @@ def collect() -> dict:
     ]
     if empty:
         names = ", ".join(sorted({r["src"].replace("avito_", "") for r in empty})[:8])
-        snap["problems"].append(f"{len(empty)} запрос(ов) вернули 0 карточек (блок Авито или нет сети): {names}")
+        if len(empty) > 0.3 * len(recs):  # a few empty queries are normal (rare words); many mean a block or no network
+            snap["problems"].append(f"{len(empty)} из {len(recs)} запросов вернули 0 карточек (блок Авито или нет сети): {names}")
+        else:
+            snap["lines"].append(f"пустая выдача у {len(empty)} запросов (для редких слов это нормально): {names}")
     if lost:
         snap["problems"].append(f"{len(lost)} лот(ов) подошли, но не отправлены и не отсеяны")
     gap = _longest_gap_h(ok)
