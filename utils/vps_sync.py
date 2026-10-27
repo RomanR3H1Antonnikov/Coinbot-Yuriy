@@ -40,6 +40,24 @@ def _push(payload: dict) -> bool:
     return True
 
 
+def push_avito_stats(snapshot: dict) -> bool:
+    """Daily report is built on the VPS; this is the Avito part of it (read by audit_run.py)."""
+    if not _enabled():
+        return False
+    key = os.path.expanduser(os.getenv("VPS_SSH_KEY", "~/.ssh/gulaistore"))
+    cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=20",
+           os.environ["VPS_SSH"], "cat > /root/Coinbot-Yuriy/logs/avito_stats.json"]
+    try:
+        r = subprocess.run(cmd, input=json.dumps(snapshot, ensure_ascii=False).encode("utf-8"),
+                           capture_output=True, timeout=60)
+    except Exception as e:
+        logger.warning("Avito stats push failed: %s", e)
+        return False
+    if r.returncode != 0:
+        logger.warning("Avito stats push failed: %s", r.stderr.decode("utf-8", "replace")[-300:])
+    return r.returncode == 0
+
+
 def sync_to_vps(found: list[dict], rejected: list[tuple[dict, str, str]]):
     if not _enabled():
         return

@@ -160,8 +160,8 @@ def run_avito(cfg: dict):
         scraper.pages = src.get("pages")
         _run_source(src, scraper, cfg)
     close_avito_browser()
-    from audit_avito import maybe_send  # daily report, sent once after 09:00
-    maybe_send()
+    from audit_avito import push_snapshot  # Avito part of the daily report, built on the VPS
+    push_snapshot()
 
 
 def main():

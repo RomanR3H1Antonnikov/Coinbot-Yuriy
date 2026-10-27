@@ -7,6 +7,7 @@ what was actually sent / rejected. Any keyword lot that is in neither place is r
 """
 import argparse
 import html
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -61,14 +62,37 @@ def audit(cfg: dict) -> tuple[str, int]:
     total_missing += len(a_missing)
     missing_all += a_missing
 
-    head = (f"📊 Сверка за {WINDOW_H} ч\n\n" + viewed_block(["meshok", "auction"]) + "\n\n"
-            + photo_block(["meshok", "auction"]) + "\n\n<b>Мешок</b>\n" + "\n".join(lines)
-            + "\n\n<b>Аукцион</b> (свежие лоты каждого раздела, по заголовкам)\n" + "\n".join(a_lines) + "\n\n"
-            + ("✅ Всё, что подошло по словам, дошло или отсеяно правилами." if not total_missing
-               else f"⚠️ Не дошло лотов: {total_missing}"))
+    avito, av_lines, av_problems = load_avito()
+    platforms = ["meshok", "auction", "avito"]
+    head = (f"📊 Сверка за {WINDOW_H} ч\n\n"
+            + viewed_block(platforms, {"avito": avito["viewed"] if avito else None}) + "\n\n"
+            + photo_block(platforms, {"avito": avito["photo"] if avito else None}) + "\n\n<b>Мешок</b>\n" + "\n".join(lines)
+            + "\n\n<b>Аукцион</b> (свежие лоты каждого раздела, по заголовкам)\n" + "\n".join(a_lines)
+            + "\n\n<b>Авито</b> (по журналу прогонов на ПК)\n" + "\n".join(av_lines) + "\n\n"
+            + ("✅ Всё, что подошло по словам, дошло или отсеяно правилами." if not total_missing and not av_problems
+               else (f"⚠️ Не дошло лотов: {total_missing}" if total_missing else ""))
+            + "".join(f"\n⚠️ Авито: {html.escape(p)}" for p in av_problems))
     for label, l in missing_all[:10]:
         head += f"\n• {html.escape(l['title'][:70])} — {l['url']}"
     return head, total_missing
+
+
+AVITO_STATS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "avito_stats.json")
+AVITO_STALE_H = 5  # the PC pushes a snapshot after every run (every 2 h)
+
+
+def load_avito() -> tuple[dict | None, list[str], list[str]]:
+    """(snapshot or None, report lines, problems). Avito runs on the PC; no fresh snapshot
+    means the PC is off or the task is not running, which is exactly what the client must see."""
+    try:
+        with open(AVITO_STATS, encoding="utf-8") as f:
+            snap = json.load(f)
+        age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(snap["ts"])).total_seconds() / 3600
+    except (OSError, ValueError, KeyError):
+        return None, ["данных нет"], ["данные от ПК не поступали"]
+    if age_h > AVITO_STALE_H:
+        return None, [f"последние данные {age_h:.0f} ч назад"], [f"ПК не выходил на связь {age_h:.0f} ч (выключен или задача не работает)"]
+    return snap, [f"{html.escape(l)}" for l in snap["lines"]], snap["problems"]
 
 
 def audit_auction(cfg, kw_all, kw_direct, kw_always, sent, rejected):
@@ -114,12 +138,42 @@ def main():
     logger.info("audit done, missing=%d", missing)
     if args.dry:
         return
+    api = f"https://api.telegram.org/bot{BOT_TOKEN}"
+    pinned = _load_pinned()
     for cid in _get_chat_ids():
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        r = requests.post(f"{api}/sendMessage",
                           json={"chat_id": cid, "text": text, "parse_mode": "HTML",
                                 "disable_web_page_preview": True}, timeout=15)
         if not r.ok:
             logger.error("Telegram error [%s]: %s", cid, r.text[:200])
+            continue
+        # Keep only the latest report pinned, silently
+        new_id = r.json()["result"]["message_id"]
+        if pinned.get(cid):
+            requests.post(f"{api}/unpinChatMessage", json={"chat_id": cid, "message_id": pinned[cid]}, timeout=15)
+        p = requests.post(f"{api}/pinChatMessage",
+                          json={"chat_id": cid, "message_id": new_id, "disable_notification": True}, timeout=15)
+        if p.ok:
+            pinned[cid] = new_id
+        else:
+            logger.error("Pin failed [%s]: %s", cid, p.text[:200])
+    _save_pinned(pinned)
+
+
+PINNED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "pinned_report.json")
+
+
+def _load_pinned() -> dict:
+    try:
+        with open(PINNED, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_pinned(data: dict) -> None:
+    with open(PINNED, "w", encoding="utf-8") as f:
+        json.dump(data, f)
 
 
 if __name__ == "__main__":
