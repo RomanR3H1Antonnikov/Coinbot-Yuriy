@@ -218,9 +218,15 @@ class _Browser:
     def _scroll_and_read(self, html: str) -> str:
         """Scroll down in steps so lazy-loaded card photos get their src, then re-read the HTML."""
         try:
-            for _ in range(10):
-                self._page.mouse.wheel(0, random.randint(800, 1000))
-                time.sleep(random.uniform(0.5, 0.9))
+            # Bring every 3rd card into view (works even when the window is in the background,
+            # unlike wheel events), then the bottom, so lazy images get their src
+            total = self._page.evaluate("document.querySelectorAll('[data-marker=item]').length")
+            for i in range(0, total, 3):
+                self._page.evaluate(
+                    "i => { const e = document.querySelectorAll('[data-marker=item]')[i];"
+                    " if (e) e.scrollIntoView({block: 'center'}); }", i)
+                time.sleep(random.uniform(0.4, 0.7))
+            self._page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             time.sleep(1.5)
             fresh = _content(self._page)
             if not _is_challenge_or_block(fresh):
@@ -251,6 +257,24 @@ def _extract_photo(item) -> str | None:
         if v:
             return v if v.startswith("http") else (f"https:{v}" if v.startswith("//") else f"{BASE_URL}{v}")
     return None
+
+
+_NOPHOTO_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "avito_nophoto.txt")
+_nophoto_logged = 0  # per process: a few samples are enough to see why a card has no picture
+
+
+def _log_no_photo(source_id: str, item) -> None:
+    global _nophoto_logged
+    if _nophoto_logged >= 4:
+        return
+    try:
+        if os.path.exists(_NOPHOTO_LOG) and os.path.getsize(_NOPHOTO_LOG) > 300_000:
+            return
+        with open(_NOPHOTO_LOG, "a", encoding="utf-8") as f:
+            f.write(f"\n===== {datetime.now().isoformat()} {source_id}\n{str(item)[:2500]}\n")
+        _nophoto_logged += 1
+    except OSError:
+        pass
 
 
 _browser: _Browser | None = None
@@ -355,6 +379,8 @@ class AvitoScraper(BaseScraper):
 
             # Photo
             photo_url = _extract_photo(item) if item.name != "a" else None
+            if not photo_url and item.name != "a":
+                _log_no_photo(self.source_id, item)
 
             lots.append({
                 "lot_id": lot_id,
