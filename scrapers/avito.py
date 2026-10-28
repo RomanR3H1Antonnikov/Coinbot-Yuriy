@@ -251,12 +251,22 @@ def _photo_candidate(tag) -> str | None:
     return None
 
 
+_SLIDER_PREFIX = "slider-image/image-"
+_AVITO_IMG = re.compile(r"https?://[\w.-]*img\.avito\.st/image/[^\s\"'<>)]+")
+
+
 def _extract_photo(item) -> str | None:
     for tag in item.find_all(["img", "source"]):
         v = _photo_candidate(tag)
         if v:
             return v if v.startswith("http") else (f"https:{v}" if v.startswith("//") else f"{BASE_URL}{v}")
-    return None
+    # Slider cards have no <img>: the picture URLs sit in <li data-marker="slider-image/image-https://...">
+    for el in item.find_all(attrs={"data-marker": re.compile("^" + re.escape(_SLIDER_PREFIX))}):
+        v = el["data-marker"][len(_SLIDER_PREFIX):]
+        if v.startswith("http"):
+            return v
+    m = _AVITO_IMG.search(str(item))
+    return m.group(0).replace("&amp;", "&") if m else None
 
 
 _NOPHOTO_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "avito_nophoto.txt")
