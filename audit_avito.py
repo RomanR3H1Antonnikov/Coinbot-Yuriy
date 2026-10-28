@@ -25,7 +25,7 @@ def collect() -> dict:
             "photo": photo_counts("avito", WINDOW_H), "lines": [], "problems": []}
     recs = run_journal.read(WINDOW_H, "avito")
     if not recs:
-        snap["problems"].append("за сутки не было ни одного прогона Авито (ПК выключен или задача Coinbot-Avito не работает)")
+        snap["problems"].append("за сутки не было ни одного прогона Авито")
         return snap
 
     empty = [r for r in recs if r["fetched"] == 0]

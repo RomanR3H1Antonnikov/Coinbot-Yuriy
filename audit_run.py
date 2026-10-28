@@ -70,7 +70,7 @@ def audit(cfg: dict) -> tuple[str, int]:
             + viewed_block(platforms, {"avito": avito["viewed"] if avito else None}) + "\n\n"
             + photo_block(platforms, {"avito": avito["photo"] if avito else None}) + "\n\n<b>Мешок</b>\n" + "\n".join(lines)
             + "\n\n<b>Аукцион</b> (свежие лоты каждого раздела, по заголовкам)\n" + "\n".join(a_lines)
-            + "\n\n<b>Авито</b> (по журналу прогонов на ПК)\n" + "\n".join(av_lines) + "\n\n"
+            + "\n\n<b>Авито</b>\n" + "\n".join(av_lines) + "\n\n"
             + ("✅ Всё, что подошло по словам, дошло или отсеяно правилами." if not total_missing and not av_problems
                else (f"⚠️ Не дошло лотов: {total_missing}" if total_missing else ""))
             + "".join(f"\n⚠️ Авито: {html.escape(p)}" for p in av_problems))
@@ -84,17 +84,22 @@ AVITO_STALE_H = 5  # the PC pushes a snapshot after every run (every 2 h)
 
 
 def load_avito() -> tuple[dict | None, list[str], list[str]]:
-    """(snapshot or None, report lines, problems). Avito runs on the PC; no fresh snapshot
-    means the PC is off or the task is not running, which is exactly what the client must see."""
+    """(snapshot or None, report lines, problems). The snapshot is the last 24 h aggregate as of
+    the last Avito run; an old one is still shown, labelled with that run's time, and a line
+    flags it when the last run is older than AVITO_STALE_H."""
     try:
         with open(AVITO_STATS, encoding="utf-8") as f:
             snap = json.load(f)
-        age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(snap["ts"])).total_seconds() / 3600
+        at = datetime.fromisoformat(snap["ts"])
     except (OSError, ValueError, KeyError):
-        return None, ["данных нет"], ["данные от ПК не поступали"]
+        return None, ["данных пока нет"], []
+    age_h = (datetime.now(timezone.utc) - at).total_seconds() / 3600
+    stamp = (at + timedelta(hours=3)).strftime("%d.%m %H:%M")  # Moscow time
+    lines = [f"за 24 ч до последнего прогона ({stamp} МСК):"] + [html.escape(l) for l in snap["lines"]]
+    problems = list(snap["problems"])
     if age_h > AVITO_STALE_H:
-        return None, [f"последние данные {age_h:.0f} ч назад"], [f"ПК не выходил на связь {age_h:.0f} ч (выключен или задача не работает)"]
-    return snap, [f"{html.escape(l)}" for l in snap["lines"]], snap["problems"]
+        problems.insert(0, f"последний прогон Авито был {stamp} МСК ({age_h:.0f} ч назад)")
+    return snap, lines, problems
 
 
 def audit_auction(cfg, kw_all, kw_direct, kw_always, sent, rejected):
