@@ -123,6 +123,7 @@ class MeshokScraper(BaseScraper):
                 seen.add(lot_id)
                 pics = it.get("pictures") or []
                 price = it.get("price")
+                sale_type = {"fixedPrice": "buy_now", "auction": "auction"}.get(it.get("type"))
                 lots.append({
                     "lot_id": lot_id,
                     "source": self.source_id,
@@ -133,6 +134,7 @@ class MeshokScraper(BaseScraper):
                     "photo_url": BASE_URL + pics[0]["url"] if pics else None,
                     "description": html.unescape(it.get("title") or "").strip(),
                     "published_at": begin.isoformat(),
+                    "sale_type": sale_type,
                 })
             if reached_old:
                 break

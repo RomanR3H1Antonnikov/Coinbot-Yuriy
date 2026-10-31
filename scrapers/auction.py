@@ -96,7 +96,9 @@ class AuctionScraper(BaseScraper):
         for card in cards:
             data_id = card.get("data-id", "")
             sale_type_raw = card.get("data-saletype", "")
-            sale_type = "auction" if sale_type_raw == "auction" else ("buy_now" if sale_type_raw else None)
+            # auctionwithbuynow displays a starting bid; it is not a fixed-price lot.
+            sale_type = ({"auction": "auction", "auctionwithbuynow": "auction",
+                          "buynow": "buy_now"}.get(sale_type_raw))
             link = card.find("a", class_="offer_snippet__link")
             if not link:
                 continue

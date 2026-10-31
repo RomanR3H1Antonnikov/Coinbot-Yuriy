@@ -402,6 +402,7 @@ class AvitoScraper(BaseScraper):
                 "photo_url": photo_url,
                 "description": title,
                 "published_at": None,
+                "sale_type": "buy_now",
             })
 
         return lots

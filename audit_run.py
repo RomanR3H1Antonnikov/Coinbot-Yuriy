@@ -50,7 +50,8 @@ def audit(cfg: dict) -> tuple[str, int]:
         lots = [l for l in lots if datetime.fromisoformat(l["published_at"]) <= edge
                 and datetime.fromisoformat(l["published_at"]) >= now - timedelta(hours=WINDOW_H + GRACE_H)]
         rules_rej: list = []
-        kept = pre_filter(lots, kw_direct, kw_always, rejected=rules_rej)
+        kept = pre_filter(lots, kw_direct, kw_always, rejected=rules_rej,
+                          price_exempt_keywords=cfg.get("price_exempt_keywords", []))
         hits = keyword_filter(kept, kw_all)
         n_sent = sum(1 for l in hits if l["lot_id"] in sent)
         n_rej = sum(1 for l in hits if l["lot_id"] not in sent and l["lot_id"] in rejected)
@@ -116,7 +117,8 @@ def audit_auction(cfg, kw_all, kw_direct, kw_always, sent, rejected):
         with db_conn() as c:
             seen = {r[0] for r in c.execute("SELECT lot_id FROM seen_lots WHERE source=?", (src["id"],))}
         rules_rej: list = []
-        kept = pre_filter(lots, kw_direct, kw_always, rejected=rules_rej)
+        kept = pre_filter(lots, kw_direct, kw_always, rejected=rules_rej,
+                          price_exempt_keywords=cfg.get("price_exempt_keywords", []))
         fresh = 0
         while fresh < len(kept) and kept[fresh]["lot_id"] not in seen:
             fresh += 1
