@@ -22,10 +22,13 @@ def _reject_reason(lot: dict, is_always, is_price_exempt) -> str | None:
 
     text = lot_text(lot)
 
-    # The fixed-price floor also applies to otherwise unconditional keywords.
-    if lot.get("sale_type") == "buy_now" and not is_price_exempt(text):
-        price_val = _parse_price(lot.get("price", ""))
-        if price_val is not None and price_val < _MIN_BUY_NOW_PRICE:
+    # Compare the immediate-purchase price, never the starting bid. Some
+    # auctions also have a separate buy-now option at a different price.
+    buy_now_price = lot.get("buy_now_price")
+    if lot.get("sale_type") == "buy_now" or buy_now_price:
+        price_val = _parse_price(str(buy_now_price or lot.get("price", "")))
+        if (price_val is not None and price_val < _MIN_BUY_NOW_PRICE
+                and not is_price_exempt(text)):
             return f"цена до {_MIN_BUY_NOW_PRICE} ₽ (купить сейчас)"
 
     if is_always(text):

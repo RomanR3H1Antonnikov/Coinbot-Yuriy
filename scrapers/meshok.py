@@ -124,17 +124,25 @@ class MeshokScraper(BaseScraper):
                 pics = it.get("pictures") or []
                 price = it.get("price")
                 sale_type = {"fixedPrice": "buy_now", "auction": "auction"}.get(it.get("type"))
+                # An auction can also offer an immediate purchase. `price` is the bid;
+                # `strikePrice` is the separate buy-now price (0 means unavailable).
+                buy_now_price = it.get("strikePrice") if sale_type == "auction" else None
+                price_label = f"{int(price):,}".replace(",", " ") + " ₽" if price else ""
+                if buy_now_price and buy_now_price > 0:
+                    now_label = f"{int(buy_now_price):,}".replace(",", " ") + " ₽"
+                    price_label += f" (ставка); купить сейчас {now_label}"
                 lots.append({
                     "lot_id": lot_id,
                     "source": self.source_id,
                     "source_label": self.label,
                     "url": f"{BASE_URL}/item/{lot_id}",
                     "title": html.unescape(it.get("title") or "").strip(),
-                    "price": f"{int(price):,}".replace(",", " ") + " ₽" if price else "",
+                    "price": price_label,
                     "photo_url": BASE_URL + pics[0]["url"] if pics else None,
                     "description": html.unescape(it.get("title") or "").strip(),
                     "published_at": begin.isoformat(),
                     "sale_type": sale_type,
+                    "buy_now_price": buy_now_price if buy_now_price and buy_now_price > 0 else None,
                 })
             if reached_old:
                 break

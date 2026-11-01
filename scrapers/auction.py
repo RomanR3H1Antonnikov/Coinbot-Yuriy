@@ -99,6 +99,9 @@ class AuctionScraper(BaseScraper):
             # auctionwithbuynow displays a starting bid; it is not a fixed-price lot.
             sale_type = ({"auction": "auction", "auctionwithbuynow": "auction",
                           "buynow": "buy_now"}.get(sale_type_raw))
+            # For auctionwithbuynow the listing price is the starting bid;
+            # data-buynow_price holds the optional immediate-purchase amount.
+            buy_now_price = card.get("data-buynow_price") if sale_type_raw == "auctionwithbuynow" else None
             link = card.find("a", class_="offer_snippet__link")
             if not link:
                 continue
@@ -123,6 +126,11 @@ class AuctionScraper(BaseScraper):
             if price_el:
                 raw = price_el.get_text(separator=" ", strip=True)
                 price = re.sub(r"\s*a\s*$", " ₽", raw).strip()
+            if buy_now_price:
+                now_digits = re.sub(r"\D", "", buy_now_price)
+                if now_digits:
+                    now_label = f"{int(now_digits):,}".replace(",", " ") + " ₽"
+                    price += f" (ставка); купить сейчас {now_label}"
 
             # Photo: data-img JSON array on div.snippet_photo.lazy
             photo_url = None
@@ -148,6 +156,7 @@ class AuctionScraper(BaseScraper):
                 "description": title,
                 "published_at": None,
                 "sale_type": sale_type,
+                "buy_now_price": buy_now_price,
             })
 
         if not lots:
