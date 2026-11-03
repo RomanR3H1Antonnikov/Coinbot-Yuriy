@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 PENDING = Path(__file__).resolve().parent.parent / "logs" / "vps_sync_pending.jsonl"
 
 _REMOTE = (
-    "cd /root/Coinbot-Yuriy && .venv/bin/python -c \""
+    "cd /opt/coinbot-yuriy && runuser -u coinbot -- .venv/bin/python -c \""
     "import sys,json;from db.database import init_db,save_found_lot,save_rejected,mark_seen;"
     "init_db();d=json.load(sys.stdin);"
     "[(save_found_lot(l),mark_seen(l['lot_id'],l['source'])) for l in d['found']];"
@@ -26,7 +26,7 @@ def _enabled() -> bool:
 
 def _push(payload: dict) -> bool:
     key = os.path.expanduser(os.getenv("VPS_SSH_KEY", "~/.ssh/gulaistore"))
-    cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=20",
+    cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=20",
            os.environ["VPS_SSH"], _REMOTE]
     try:
         r = subprocess.run(cmd, input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -45,8 +45,9 @@ def push_avito_stats(snapshot: dict) -> bool:
     if not _enabled():
         return False
     key = os.path.expanduser(os.getenv("VPS_SSH_KEY", "~/.ssh/gulaistore"))
-    cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=20",
-           os.environ["VPS_SSH"], "cat > /root/Coinbot-Yuriy/logs/avito_stats.json"]
+    cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=20",
+           os.environ["VPS_SSH"],
+           "runuser -u coinbot -- tee /opt/coinbot-yuriy/logs/avito_stats.json >/dev/null"]
     try:
         r = subprocess.run(cmd, input=json.dumps(snapshot, ensure_ascii=False).encode("utf-8"),
                            capture_output=True, timeout=60)

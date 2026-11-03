@@ -88,6 +88,11 @@ def _run_source(src: dict, scraper, cfg: dict):
     logger.info("[%s] After pre_filter: %d lots (%d rejected by rules)", src_id, len(lots), len(pre_rejected))
 
     unseen = [l for l in lots if not is_seen(l["lot_id"], src_id)]
+    # After a lost DB or a long outage, the listing can contain hundreds of old
+    # items. Hold the run for review instead of sending a large burst to clients.
+    if not src_id.startswith("avito") and len(unseen) > 10:
+        logger.error("[%s] Safety stop: %d unseen lots; baseline needs review", src_id, len(unseen))
+        return
     confirmed = keyword_filter(unseen, kw_all)
 
     # Title has no keyword: the defect may be named only in the lot description (auction.ru).
