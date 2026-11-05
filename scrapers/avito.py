@@ -112,7 +112,8 @@ class _Browser:
               "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
         try:
             subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except Exception:
             pass
 
@@ -174,7 +175,8 @@ class _Browser:
             try:
                 import subprocess
                 subprocess.run(["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             except Exception:
                 try:
                     self._proc.kill()

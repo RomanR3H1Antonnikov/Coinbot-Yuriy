@@ -30,7 +30,8 @@ def _push(payload: dict) -> bool:
            os.environ["VPS_SSH"], _REMOTE]
     try:
         r = subprocess.run(cmd, input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                           capture_output=True, timeout=90)
+                           capture_output=True, timeout=90,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as e:
         logger.warning("VPS sync failed: %s", e)
         return False
@@ -50,7 +51,8 @@ def push_avito_stats(snapshot: dict) -> bool:
            "runuser -u coinbot -- tee /opt/coinbot-yuriy/logs/avito_stats.json >/dev/null"]
     try:
         r = subprocess.run(cmd, input=json.dumps(snapshot, ensure_ascii=False).encode("utf-8"),
-                           capture_output=True, timeout=60)
+                           capture_output=True, timeout=60,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as e:
         logger.warning("Avito stats push failed: %s", e)
         return False
