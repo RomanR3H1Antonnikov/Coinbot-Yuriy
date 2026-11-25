@@ -53,13 +53,14 @@ def audit(cfg: dict) -> tuple[str, int]:
         kept = pre_filter(lots, kw_direct, kw_always, rejected=rules_rej,
                           price_exempt_keywords=cfg.get("price_exempt_keywords", []))
         hits = keyword_filter(kept, kw_all)
+        rules_hits = keyword_filter([lot for lot, _ in rules_rej], kw_all)
         n_sent = sum(1 for l in hits if l["lot_id"] in sent)
         n_rej = sum(1 for l in hits if l["lot_id"] not in sent and l["lot_id"] in rejected)
         miss = [l for l in hits if l["lot_id"] not in sent and l["lot_id"] not in rejected]
         total_missing += len(miss)
         missing_all += [(src["label"], l) for l in miss]
-        lines.append(f"{html.escape(src['label'])}: на сайте {len(lots)}, по словам {len(hits) + sum(1 for l, _ in rules_rej if keyword_filter([l], kw_all))}, "
-                     f"прислано {n_sent}, отсеяно правилами {len(rules_rej)}, не дошло {len(miss)}")
+        lines.append(f"{html.escape(src['label'])}: на сайте {len(lots)}, по словам {len(hits) + len(rules_hits)}, "
+                     f"прислано {n_sent}, отсеяно правилами {len(rules_hits)}, не дошло {len(miss)}")
 
     a_lines, a_missing = audit_auction(cfg, kw_all, kw_direct, kw_always, sent, rejected)
     total_missing += len(a_missing)

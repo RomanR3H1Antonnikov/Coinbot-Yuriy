@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -52,6 +53,27 @@ class ReportDataTests(unittest.TestCase):
         self.assertIn("Мешок</b>: просмотрено новых 2, отправлено 1, отсеяно 1, важных 1", text)
         self.assertIn("Аукцион</b>: просмотрено новых 0, отправлено 1, отсеяно 0, важных 1", text)
         self.assertIn("Авито</b>: просмотрено новых 8, отправлено 1, отсеяно 0, важных 0", text)
+
+    def test_full_report_counts_only_keyword_lots_as_rule_rejections(self):
+        from audit_run import audit
+
+        published = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        lots = [
+            {"lot_id": "keyword", "source": "meshok_braki", "title": "Брак монеты",
+             "description": "Брак монеты", "price": "100 ₽", "sale_type": "buy_now",
+             "published_at": published, "url": "https://meshok.net/item/1"},
+            {"lot_id": "no-keyword", "source": "meshok_braki", "title": "Обычная монета",
+             "description": "Обычная монета", "price": "100 ₽", "sale_type": "buy_now",
+             "published_at": published, "url": "https://meshok.net/item/2"},
+        ]
+        cfg = {"keywords": ["брак"], "meshok_sources": [
+            {"id": "meshok_braki", "label": "Мешок — Браки", "url": "https://meshok.net/listing?good=15190"}]}
+        with patch("scrapers.meshok.MeshokScraper.fetch_new_lots", return_value=lots), \
+             patch("audit_run.audit_auction", return_value=([], [])), \
+             patch("audit_run.load_avito", return_value=(None, ["нет данных"], [])):
+            text, missing = audit(cfg)
+        self.assertEqual(missing, 0)
+        self.assertIn("на сайте 2, по словам 1, прислано 0, отсеяно правилами 1, не дошло 0", text)
 
 
 class ReportCommandTests(unittest.TestCase):
