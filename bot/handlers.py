@@ -12,6 +12,8 @@ from aiogram.types import Message
 from db.database import (
     get_last_found_lots, get_rejected, count_rejected_by_stage,
 )
+from bot.reporting import important_found, load_config, stats_text
+from utils.notifier import _get_chat_ids
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -56,17 +58,23 @@ HELP_TEXT = (
     "/logs 10 — последние N находок с фото (до 20)\n"
     "/list — текстовый список последних 20 находок\n"
     "/list 50 — список из N находок (до 50)\n\n"
+    "<b>Сводки</b>\n"
+    "/report — свежая полная сверка за 24 ч (может занять несколько минут)\n"
+    "/stats — быстрые цифры за 24 ч по площадкам\n"
+    "/important — важные находки за 24 ч, списком\n"
+    "/important 48 — важные находки за 48 ч\n\n"
     "<b>Отклонённое</b> (что бот рассмотрел, но не прислал)\n"
-    "/rejected — за 24 ч, обиходные монеты, списком\n"
-    "/rejected 24 фото — то же, но с фото (до 30)\n"
-    "/rejected 48 ии — за 48 ч, отклонённые ИИ\n"
-    "/rejected 24 правила — годовик, копейки, до 1965, цена, россыпи\n"
-    "/rejected 24 все — все причины"
+    "/rejected — отклонённые за 24 ч\n"
+    "/rejected 24 все фото — то же, но с фото (до 30)\n"
+    "/rejected 24 правила — годовик, копейки, цена, россыпи"
 )
 
 BOT_COMMANDS = [
     ("logs", "Последние находки с фото"),
     ("list", "Последние находки списком"),
+    ("report", "Полная сверка за сутки"),
+    ("stats", "Статистика за сутки"),
+    ("important", "Важные находки"),
     ("rejected", "Что бот рассмотрел, но не прислал"),
     ("help", "Список команд"),
 ]
@@ -76,7 +84,7 @@ BOT_COMMANDS = [
 async def cmd_start(message: Message):
     await message.answer(
         "👋 <b>Coinbot — нумизматический мониторинг</b>\n\n"
-        "Слежу за Мешком и Аукционом в поисках юбилейных монет с браком и разновидностями.\n\n"
+        "Слежу за Мешком, Аукционом и Авито в поисках монет с браком и разновидностями.\n\n"
         + HELP_TEXT,
         parse_mode="HTML",
     )
@@ -169,6 +177,72 @@ async def _send_chunks(message: Message, lines: list[str]):
         await message.answer(chunk, parse_mode="HTML", disable_web_page_preview=True)
 
 
+def _allowed(message: Message) -> bool:
+    return bool(message.chat and str(message.chat.id) in _get_chat_ids())
+
+
+_report_lock = asyncio.Lock()
+
+
+@router.message(Command("report"))
+async def cmd_report(message: Message):
+    if not _allowed(message):
+        return
+    if _report_lock.locked():
+        await message.answer("Сверка уже выполняется. Результат появится в чате, откуда её запросили.")
+        return
+    async with _report_lock:
+        await message.answer("Сверяю площадки за последние 24 часа. Это может занять несколько минут.")
+        try:
+            from audit_run import audit
+            report, _ = await asyncio.to_thread(audit, load_config())
+            await _send_chunks(message, report.splitlines())
+        except Exception:
+            logger.exception("On-demand report failed")
+            await message.answer("Не удалось собрать полную сверку. Быстрые данные доступны по /stats.")
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if not _allowed(message):
+        return
+    try:
+        await message.answer(await asyncio.to_thread(stats_text, load_config()), parse_mode="HTML")
+    except Exception:
+        logger.exception("On-demand stats failed")
+        await message.answer("Не удалось собрать статистику. Попробуйте ещё раз позже.")
+
+
+@router.message(Command("important"))
+async def cmd_important(message: Message):
+    if not _allowed(message):
+        return
+    args = (message.text or "").split()[1:]
+    hours = min(max(int(args[0]), 1), 24 * 7) if args and args[0].isdigit() else 24
+    try:
+        lots = await asyncio.to_thread(important_found, load_config(), hours)
+    except Exception:
+        logger.exception("Important lots report failed")
+        await message.answer("Не удалось собрать важные находки. Попробуйте ещё раз позже.")
+        return
+    if not lots:
+        await message.answer(f"За последние {hours} ч важных находок по заголовкам нет.")
+        return
+    lines = [f"⭐ <b>Важные находки за {hours} ч: {len(lots)}</b>\n"
+             "Сначала «гибрид», затем остальные прямые слова. Другие алерты продолжают приходить.\n"]
+    for i, lot in enumerate(lots[:30], 1):
+        label = SOURCE_LABELS.get(lot["source"], lot["source"])
+        lines.append(
+            f"{i}. <b>{_h(label)}</b> | {_fmt_date(lot['found_at'])}\n"
+            f"   {_h((lot['title'] or '—')[:120])} | {_h(lot['price'] or '—')}\n"
+            f"   Совпало: {_h(', '.join(lot['important_keywords']))}\n"
+            f"   {_h(lot['url'])}\n"
+        )
+    if len(lots) > 30:
+        lines.append(f"Показаны первые 30 из {len(lots)}. Уточните период: /important 12")
+    await _send_chunks(message, lines)
+
+
 STAGE_ALIASES = {
     "тиражка": "jubilee", "обиходные": "jubilee", "jubilee": "jubilee",
     "ии": "llm", "llm": "llm",
@@ -178,7 +252,7 @@ STAGE_ALIASES = {
 STAGE_TITLES = {
     "jubilee": "обиходные монеты (тиражка)",
     "llm": "ИИ: нет брака или разновидности",
-    "rules": "правила (годовик, копейки, до 1965, цена, россыпи)",
+    "rules": "правила (годовик, копейки, цена, россыпи)",
 }
 MAX_REJECTED_LINES = 100
 MAX_REJECTED_PHOTOS = 30
@@ -188,7 +262,7 @@ MAX_REJECTED_PHOTOS = 30
 async def cmd_rejected(message: Message):
     """Lots that passed keyword filter but were not sent, with the reason."""
     args = (message.text or "").split()[1:]
-    hours, stage, with_photos = 24, "jubilee", False
+    hours, stage, with_photos = 24, "all", False
     for a in args:
         if a.isdigit():
             hours = min(max(int(a), 1), 24 * 7)
