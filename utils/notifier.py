@@ -21,12 +21,12 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
     token = bot_token or BOT_TOKEN
     if not token:
         logger.error("send_alert: BOT_TOKEN not set")
-        return
+        return False
 
     recipients = [chat_id] if chat_id else _get_chat_ids()
     if not recipients:
         logger.error("send_alert: no CHAT_IDS configured")
-        return
+        return False
 
     title = lot.get("title", "—")
     price = lot.get("price", "—")
@@ -51,8 +51,8 @@ def send_alert(lot: dict, bot_token: str = None, chat_id: str = None):
         data, photo_url = _download_best(photo_url)
     _note_photo(lot, data, photo_url)
 
-    for cid in recipients:
-        _send_to(base_url, cid, text, photo_url, title, data)
+    results = [_send_to(base_url, cid, text, photo_url, title, data) for cid in recipients]
+    return all(results)
 
 
 def _image_size(data: bytes) -> tuple[int, int] | None:
@@ -152,9 +152,11 @@ def _send_to(base_url: str, cid: str, text: str, photo_url: str | None, title: s
             logger.error("Telegram error [chat=%s] %s: %s", cid, resp.status_code, resp.text[:200])
         else:
             logger.info("Alert sent to %s: %s", cid, title[:50])
+        return resp.ok
 
     except requests.RequestException as e:
         logger.error("send_alert network error [chat=%s]: %s", cid, e)
+        return False
 
 
 def _h(text: str) -> str:

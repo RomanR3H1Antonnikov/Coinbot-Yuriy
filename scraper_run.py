@@ -62,10 +62,12 @@ def _run_source(src: dict, scraper, cfg: dict):
     note_viewed(src_id.split("_")[0], [l["lot_id"] for l in lots])
 
     if not lots:
+        if src_id == "meshok_braki":
+            from utils.alert_queue import drain
+            drain(src_id, send_alert, limit=5)
         run_journal.write(src_id, fetched=0, with_photo=0, rules_rejected=0, hits=0, expected=[])
-        # A blocked Avito fetch returns 0 lots: keep the first-run baseline pending
-        if not (since is None and src.get("baseline_first_run")):
-            set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
+        # Empty results can mean a temporary site failure. Retain the cursor
+        # so an unfinished burst cannot disappear on the next run.
         return
 
     if since is None and src.get("baseline_first_run"):
@@ -88,11 +90,6 @@ def _run_source(src: dict, scraper, cfg: dict):
     logger.info("[%s] After pre_filter: %d lots (%d rejected by rules)", src_id, len(lots), len(pre_rejected))
 
     unseen = [l for l in lots if not is_seen(l["lot_id"], src_id)]
-    # After a lost DB or a long outage, the listing can contain hundreds of old
-    # items. Hold the run for review instead of sending a large burst to clients.
-    if not src_id.startswith("avito") and len(unseen) > 10:
-        logger.error("[%s] Safety stop: %d unseen lots; baseline needs review", src_id, len(unseen))
-        return
     confirmed = keyword_filter(unseen, kw_all)
 
     # Title has no keyword: the defect may be named only in the lot description (auction.ru).
@@ -117,6 +114,25 @@ def _run_source(src: dict, scraper, cfg: dict):
         else:
             kept.append(lot)
     confirmed = kept
+
+    if src_id == "meshok_braki":
+        from utils.alert_queue import enqueue, drain
+        for lot in confirmed:
+            lot["matched"] = matched_keywords(lot, kw_all)
+        enqueue(confirmed)
+        save_rejected(rejected)
+        drain(src_id, send_alert, limit=5)
+        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
+        return
+
+    # A burst must not freeze a source forever. The listings are newest first:
+    # send a bounded batch now and leave the older candidates unseen for the
+    # next run. Keep last_run_at unchanged until the backlog is drained.
+    held = not src_id.startswith("avito") and len(confirmed) > 10
+    if held:
+        logger.warning("[%s] Alert burst: sending 10 of %d; remainder next run",
+                       src_id, len(confirmed))
+        confirmed = confirmed[:10]
 
     save_rejected(rejected)
 
@@ -145,7 +161,8 @@ def _run_source(src: dict, scraper, cfg: dict):
     if src_id.startswith("avito"):  # local DB -> VPS DB, so the bot sees Avito in /logs, /list, /rejected
         sync_to_vps(sent, rejected)
 
-    set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
+    if not held:
+        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
 
 
 def run_meshok(cfg: dict):
