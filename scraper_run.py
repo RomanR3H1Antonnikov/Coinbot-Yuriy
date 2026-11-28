@@ -15,17 +15,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from db.database import (
-    init_db, get_last_run_at, set_last_run_at, save_found_lot,
+    init_db, get_last_run_at, set_last_run_at,
     is_seen, mark_seen, save_rejected, purge_rejected, title_already_found, note_viewed,
 )
 from pipeline.keyword_filter import keyword_filter, matched_keywords
 from pipeline.pre_filter import pre_filter
 from pipeline.enrich import enrich_with_description
-from pipeline.dedup import dedup
 from scrapers.meshok import MeshokScraper
 from scrapers.auction import AuctionScraper
 from scrapers.avito import AvitoScraper, close_browser as close_avito_browser
 from utils.notifier import send_alert
+from utils.alert_queue import enqueue, drain
 from utils.vps_sync import sync_to_vps
 from utils import run_journal
 from utils.logger import setup_logger
@@ -62,10 +62,11 @@ def _run_source(src: dict, scraper, cfg: dict):
     note_viewed(src_id.split("_")[0], [l["lot_id"] for l in lots])
 
     if not lots:
-        if src_id == "meshok_braki":
-            from utils.alert_queue import drain
-            drain(src_id, send_alert, limit=5)
-        run_journal.write(src_id, fetched=0, with_photo=0, rules_rejected=0, hits=0, expected=[])
+        completed = drain(src_id, send_alert, limit=5 if src_id == "meshok_braki" else 10)
+        run_journal.write(src_id, fetched=0, with_photo=0, rules_rejected=0, hits=0,
+                          expected=[lot["lot_id"] for lot in completed])
+        if src_id.startswith("avito"):
+            sync_to_vps(completed, [])
         # Empty results can mean a temporary site failure. Retain the cursor
         # so an unfinished burst cannot disappear on the next run.
         return
@@ -115,16 +116,6 @@ def _run_source(src: dict, scraper, cfg: dict):
             kept.append(lot)
     confirmed = kept
 
-    if src_id == "meshok_braki":
-        from utils.alert_queue import enqueue, drain
-        for lot in confirmed:
-            lot["matched"] = matched_keywords(lot, kw_all)
-        enqueue(confirmed)
-        save_rejected(rejected)
-        drain(src_id, send_alert, limit=5)
-        set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())
-        return
-
     # A burst must not freeze a source forever. The listings are newest first:
     # send a bounded batch now and leave the older candidates unseen for the
     # next run. Keep last_run_at unchanged until the backlog is drained.
@@ -134,32 +125,17 @@ def _run_source(src: dict, scraper, cfg: dict):
                        src_id, len(confirmed))
         confirmed = confirmed[:10]
 
-    save_rejected(rejected)
-
-    new_finds = dedup(confirmed)
-    logger.info("[%s] After dedup: %d new finds", src_id, len(new_finds))
-
-    run_journal.write(src_id, fetched=fetched, with_photo=with_photo, rules_rejected=len(pre_rejected),
-                      hits=len(confirmed), expected=[l["lot_id"] for l in new_finds])
-
-    sent = []
-    for lot in new_finds:
+    for lot in confirmed:
         lot["matched"] = matched_keywords(lot, kw_all)
-        send_alert(lot)
-        row = {
-            "lot_id": lot["lot_id"],
-            "source": lot["source"],
-            "url": lot["url"],
-            "title": lot.get("title"),
-            "price": lot.get("price"),
-            "photo_url": lot.get("photo_url"),
-            "summary": None,
-        }
-        save_found_lot(row)
-        sent.append(row)
+    enqueue(confirmed)
+    save_rejected(rejected)
+    completed = drain(src_id, send_alert, limit=5 if src_id == "meshok_braki" else 10)
+    logger.info("[%s] Queued %d candidates, fully delivered %d", src_id, len(confirmed), len(completed))
+    run_journal.write(src_id, fetched=fetched, with_photo=with_photo, rules_rejected=len(pre_rejected),
+                      hits=len(confirmed), expected=[lot["lot_id"] for lot in completed])
 
     if src_id.startswith("avito"):  # local DB -> VPS DB, so the bot sees Avito in /logs, /list, /rejected
-        sync_to_vps(sent, rejected)
+        sync_to_vps(completed, rejected)
 
     if not held:
         set_last_run_at(src_id, datetime.now(timezone.utc).isoformat())

@@ -1,4 +1,8 @@
-"""Durable, bounded catch-up for the source held during VPS migration."""
+"""Per-recipient delivery queue shared by all scrapers.
+
+A lot is stored as found only after every configured recipient has received it.
+The table keeps its old name so the migration queue survives this upgrade.
+"""
 import json
 import logging
 from db.database import db_conn
@@ -21,15 +25,16 @@ def enqueue(lots):
                           (lot['source'],lot['lot_id'],json.dumps(lot,ensure_ascii=False)))
 
 def drain(source,sender,limit=5):
+    """Deliver up to ``limit`` queued lots and return those fully delivered."""
     recipients=_get_chat_ids()
     if not recipients:
         log.error('[%s] queue held: no recipients',source)
-        return
+        return []
     with db_conn() as c:
         _table(c)
         rows=c.execute('SELECT lot_id,payload,delivered FROM migration_alert_queue WHERE source=? ORDER BY rowid LIMIT ?',
                        (source,limit)).fetchall()
-    completed=0
+    completed=[]
     for lot_id,payload,delivered_raw in rows:
         lot=json.loads(payload)
         delivered=set(json.loads(delivered_raw))
@@ -38,7 +43,7 @@ def drain(source,sender,limit=5):
                 continue
             if sender(lot,chat_id=cid) is not True:
                 log.error('[%s] queue paused after failed delivery',source)
-                return
+                return completed
             delivered.add(cid)
             with db_conn() as c:
                 c.execute('UPDATE migration_alert_queue SET delivered=? WHERE source=? AND lot_id=?',
@@ -49,7 +54,8 @@ def drain(source,sender,limit=5):
             c.execute('INSERT INTO found_lots(lot_id,source,url,title,price,photo_url,summary) VALUES(?,?,?,?,?,?,NULL)',
                       (lot_id,source,lot['url'],lot.get('title'),lot.get('price'),lot.get('photo_url')))
             c.execute('DELETE FROM migration_alert_queue WHERE source=? AND lot_id=?',(source,lot_id))
-        completed+=1
+        completed.append(lot)
     with db_conn() as c:
         left=c.execute('SELECT COUNT(*) FROM migration_alert_queue WHERE source=?',(source,)).fetchone()[0]
-    log.info('[%s] catch-up delivered=%d pending=%d cap=%d',source,completed,left,limit)
+    log.info('[%s] queue delivered=%d pending=%d cap=%d',source,len(completed),left,limit)
+    return completed

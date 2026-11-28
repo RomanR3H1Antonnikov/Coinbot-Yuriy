@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import struct
 
 import requests
@@ -155,7 +156,9 @@ def _send_to(base_url: str, cid: str, text: str, photo_url: str | None, title: s
         return resp.ok
 
     except requests.RequestException as e:
-        logger.error("send_alert network error [chat=%s]: %s", cid, e)
+        # Requests includes the full Bot API URL (and token) in exception text.
+        safe_error = re.sub(r"/bot\d+:[A-Za-z0-9_-]+", "/bot[redacted]", str(e))
+        logger.error("send_alert network error [chat=%s]: %s", cid, safe_error)
         return False
 
 

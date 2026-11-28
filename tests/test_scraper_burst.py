@@ -1,46 +1,72 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import scraper_run
+from db import database
+from utils import alert_queue
+
+
+def lot(number: int) -> dict:
+    return {
+        "lot_id": str(number), "source": "meshok_yub_tir", "source_label": "Мешок",
+        "url": f"https://meshok.net/item/{number}", "title": f"Брак монеты {number}",
+        "description": "", "price": "700 ₽", "sale_type": "auction",
+        "photo_url": None, "published_at": "2026-11-28T00:00:00+00:00",
+    }
 
 
 class ScraperBurstTests(unittest.TestCase):
     def test_large_batch_drains_over_two_runs_without_advancing_cursor_early(self):
+        lots = [lot(i) for i in range(12)]
         source = {"id": "meshok_yub_tir", "label": "Мешок", "url": "https://meshok.net/listing?good=14723"}
-        lots = [
-            {"lot_id": str(i), "source": source["id"], "source_label": source["label"],
-             "url": f"https://meshok.net/item/{i}", "title": f"Брак монеты {i}",
-             "description": "", "price": "700 ₽", "sale_type": "auction",
-             "photo_url": None, "published_at": "2026-11-26T08:00:00+00:00"}
-            for i in range(12)
-        ]
-        seen = set()
+        scraper = type("Scraper", (), {"fetch_new_lots": lambda self, since: lots})()
+        cfg = {"keywords": ["брак"], "keywords_direct": [], "keywords_always": []}
 
-        def dedup(batch):
-            seen.update(lot["lot_id"] for lot in batch)
-            return batch
-
-        with patch.object(scraper_run, "get_last_run_at", return_value="2026-11-26T07:00:00+00:00"), \
-             patch.object(scraper_run, "note_viewed"), \
-             patch.object(scraper_run, "is_seen", side_effect=lambda lot_id, _: lot_id in seen), \
-             patch.object(scraper_run, "title_already_found", return_value=False), \
-             patch.object(scraper_run, "save_rejected"), \
-             patch.object(scraper_run, "dedup", side_effect=dedup), \
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(database, "DB_PATH", str(Path(directory) / "test.db")), \
+             patch.object(alert_queue, "_get_chat_ids", return_value=["user1", "user2"]), \
              patch.object(scraper_run, "send_alert", return_value=True) as send, \
-             patch.object(scraper_run, "save_found_lot"), \
-             patch.object(scraper_run, "set_last_run_at") as set_cursor, \
              patch.object(scraper_run.run_journal, "write"):
-            scraper = type("Scraper", (), {"fetch_new_lots": lambda self, since: lots})()
-            cfg = {"keywords": ["брак"], "keywords_direct": [], "keywords_always": []}
+            database.init_db()
             scraper_run._run_source(source, scraper, cfg)
-            self.assertEqual(send.call_count, 10)
-            self.assertEqual(len(seen), 10)
-            set_cursor.assert_not_called()
+            self.assertEqual(send.call_count, 20)
+            with database.db_conn() as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 10)
+                self.assertEqual(conn.execute("SELECT count(*) FROM migration_alert_queue").fetchone()[0], 0)
+                self.assertIsNone(conn.execute("SELECT last_run_at FROM run_state WHERE source=?", (source["id"],)).fetchone())
 
             scraper_run._run_source(source, scraper, cfg)
-            self.assertEqual(send.call_count, 12)
-            self.assertEqual(len(seen), 12)
-            set_cursor.assert_called_once()
+            self.assertEqual(send.call_count, 24)
+            with database.db_conn() as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 12)
+                self.assertEqual(conn.execute("SELECT count(*) FROM migration_alert_queue").fetchone()[0], 0)
+                self.assertIsNotNone(conn.execute("SELECT last_run_at FROM run_state WHERE source=?", (source["id"],)).fetchone())
+
+    def test_failed_recipient_is_retried_without_duplicate_to_first_recipient(self):
+        one_lot = lot(90)
+        calls = []
+
+        def sender(item, chat_id):
+            calls.append(chat_id)
+            return chat_id == "user1" or calls.count("user2") > 1
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(database, "DB_PATH", str(Path(directory) / "test.db")), \
+             patch.object(alert_queue, "_get_chat_ids", return_value=["user1", "user2"]):
+            database.init_db()
+            alert_queue.enqueue([one_lot])
+            self.assertEqual(alert_queue.drain(one_lot["source"], sender), [])
+            with database.db_conn() as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 0)
+
+            completed = alert_queue.drain(one_lot["source"], sender)
+            self.assertEqual([item["lot_id"] for item in completed], ["90"])
+            self.assertEqual(calls, ["user1", "user2", "user2"])
+            with database.db_conn() as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT count(*) FROM migration_alert_queue").fetchone()[0], 0)
 
 
 if __name__ == "__main__":
