@@ -68,6 +68,25 @@ class ScraperBurstTests(unittest.TestCase):
                 self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 1)
                 self.assertEqual(conn.execute("SELECT count(*) FROM migration_alert_queue").fetchone()[0], 0)
 
+    def test_avito_completed_delivery_is_synced_to_vps(self):
+        item = {**lot(91), "source": "avito_test", "url": "https://www.avito.ru/item/91",
+                "sale_type": "buy_now"}
+        source = {"id": "avito_test", "label": "Авито", "url": "https://www.avito.ru"}
+        scraper = type("Scraper", (), {"fetch_new_lots": lambda self, since: [item]})()
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(database, "DB_PATH", str(Path(directory) / "test.db")), \
+             patch.object(alert_queue, "_get_chat_ids", return_value=["user1", "user2"]), \
+             patch.object(scraper_run, "send_alert", return_value=True), \
+             patch.object(scraper_run, "sync_to_vps") as sync, \
+             patch.object(scraper_run.run_journal, "write"):
+            database.init_db()
+            scraper_run._run_source(source, scraper, {"keywords": ["брак"]})
+            self.assertEqual(sync.call_count, 1)
+            self.assertEqual([lot["lot_id"] for lot in sync.call_args.args[0]], ["91"])
+            with database.db_conn() as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM found_lots").fetchone()[0], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
